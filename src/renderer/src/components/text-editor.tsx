@@ -66,6 +66,7 @@ const Editor = forwardRef<Quill, EditorProps>(
     const quillRef = useRef<Quill | null>(null)
     const [formats, setFormats] = useState<FormatState>(DEFAULT_FORMATS)
     const ignoreChangeRef = useRef(false) // Flag to avoid triggering onTextChange during programmatic updates
+    const isInitializedRef = useRef(false)
 
     // Update refs when props change
     useLayoutEffect(() => {
@@ -73,21 +74,33 @@ const Editor = forwardRef<Quill, EditorProps>(
       onSelectionChangeRef.current = onSelectionChange
     })
 
-    // Update content when defaultValue changes
+    // Update content when defaultValue changes, but only during initial load
     useEffect(() => {
       if (quillRef.current && defaultValue !== defaultValueRef.current) {
+        // Store the new defaultValue reference
         defaultValueRef.current = defaultValue
 
-        // Skip firing onTextChange for this programmatic update
-        ignoreChangeRef.current = true
+        // Only update content during initialization or if editor is empty
+        // This prevents cursor reset during autosave cycles
+        if (
+          !isInitializedRef.current ||
+          !quillRef.current.getLength() ||
+          quillRef.current.getText().trim() === ''
+        ) {
+          // Skip firing onTextChange for this programmatic update
+          ignoreChangeRef.current = true
 
-        // Update the Quill editor content
-        quillRef.current.setContents(defaultValue || '')
+          // Update the Quill editor content
+          quillRef.current.setContents(defaultValue || '')
 
-        // Reset the ignore flag after update
-        setTimeout(() => {
-          ignoreChangeRef.current = false
-        }, 0)
+          // Mark as initialized
+          isInitializedRef.current = true
+
+          // Reset the ignore flag after update
+          setTimeout(() => {
+            ignoreChangeRef.current = false
+          }, 0)
+        }
       }
     }, [defaultValue])
 

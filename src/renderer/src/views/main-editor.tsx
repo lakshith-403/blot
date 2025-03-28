@@ -1,55 +1,44 @@
 import { useEffect, useRef, useState } from 'react'
 import Editor from '../components/text-editor'
 import { useNotes } from '@/contexts/note-context'
-import { Button } from '@/components/ui/button'
-import { Save } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 
 const MainEditor = () => {
   const quillRef = useRef<any>(null)
-  const { currentNote, saveCurrentNote } = useNotes()
+  const { currentNote, updateNoteCache } = useNotes()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState<any>(null)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const prevNoteIdRef = useRef<string | null>(null)
 
   // Update local state when the current note changes
   useEffect(() => {
     if (currentNote) {
-      setTitle(currentNote.title)
-      setContent(currentNote.content)
-      setHasUnsavedChanges(false)
-      console.log(currentNote)
+      // Always update content when switching between notes
+      if (prevNoteIdRef.current !== currentNote.id) {
+        console.log('Switching to note:', currentNote.id)
+        setTitle(currentNote.title)
+        setContent(currentNote.content)
+        prevNoteIdRef.current = currentNote.id
+      } else {
+        // Just update the title if it's the same note
+        setTitle(currentNote.title)
+      }
     } else {
       setTitle('')
       setContent(null)
-      setHasUnsavedChanges(false)
+      prevNoteIdRef.current = null
     }
   }, [currentNote])
 
   const handleTitleChange = (newTitle: string) => {
     setTitle(newTitle)
-    setHasUnsavedChanges(true)
+    updateNoteCache({ title: newTitle })
   }
 
   const handleTextChange = () => {
     if (quillRef.current) {
-      setHasUnsavedChanges(true)
-    }
-  }
-
-  const handleSave = async () => {
-    if (!currentNote || !quillRef.current) return
-
-    const quillContent = quillRef.current.getContents()
-
-    try {
-      await saveCurrentNote({
-        title,
-        content: quillContent
-      })
-      setHasUnsavedChanges(false)
-    } catch (error) {
-      console.error('Error saving note:', error)
+      const quillContent = quillRef.current.getContents()
+      updateNoteCache({ content: quillContent })
     }
   }
 
@@ -57,8 +46,8 @@ const MainEditor = () => {
     <div className="h-full w-full flex flex-col">
       {currentNote ? (
         <>
-          <div className="flex justify-between items-center px-3 py-2 border-b">
-            <div className="flex-1 mr-2">
+          <div className="flex items-center px-3 py-2 border-b">
+            <div className="flex-1">
               <Input
                 placeholder="Note title"
                 value={title}
@@ -66,21 +55,15 @@ const MainEditor = () => {
                 className="text-lg font-medium border-none focus-visible:ring-0 px-0 h-auto w-full"
               />
             </div>
-            <div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSave}
-                disabled={!hasUnsavedChanges}
-              >
-                <Save className="h-4 w-4 mr-1" />
-                Save
-              </Button>
-            </div>
           </div>
 
           <div className="flex-1">
-            <Editor ref={quillRef} defaultValue={content} onTextChange={handleTextChange} />
+            <Editor
+              ref={quillRef}
+              key={currentNote.id}
+              defaultValue={content}
+              onTextChange={handleTextChange}
+            />
           </div>
         </>
       ) : (

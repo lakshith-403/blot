@@ -1,1 +1,5 @@
 @import './base.css';
+
+.ql-editor {
+  min-height: 100vh;
+}

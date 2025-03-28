@@ -3,6 +3,7 @@ import Editor from '../components/text-editor'
 import { useNotes } from '@/contexts/note-context'
 import { Button } from '@/components/ui/button'
 import { Save } from 'lucide-react'
+import { Input } from '@/components/ui/input'
 
 const MainEditor = () => {
   const quillRef = useRef<any>(null)
@@ -56,20 +57,30 @@ const MainEditor = () => {
     <div className="h-full w-full flex flex-col">
       {currentNote ? (
         <>
-          <div className="flex justify-end p-2">
-            <Button variant="outline" size="sm" onClick={handleSave} disabled={!hasUnsavedChanges}>
-              <Save className="h-4 w-4 mr-1" />
-              Save
-            </Button>
+          <div className="flex justify-between items-center px-3 py-2 border-b">
+            <div className="flex-1 mr-2">
+              <Input
+                placeholder="Note title"
+                value={title}
+                onChange={(e) => handleTitleChange(e.target.value)}
+                className="text-lg font-medium border-none focus-visible:ring-0 px-0 h-auto w-full"
+              />
+            </div>
+            <div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSave}
+                disabled={!hasUnsavedChanges}
+              >
+                <Save className="h-4 w-4 mr-1" />
+                Save
+              </Button>
+            </div>
           </div>
+
           <div className="flex-1">
-            <Editor
-              ref={quillRef}
-              title={title}
-              onTitleChange={handleTitleChange}
-              defaultValue={content}
-              onTextChange={handleTextChange}
-            />
+            <Editor ref={quillRef} defaultValue={content} onTextChange={handleTextChange} />
           </div>
         </>
       ) : (

@@ -57,18 +57,7 @@ const DEFAULT_FORMATS: FormatState = {
 }
 
 const Editor = forwardRef<Quill, EditorProps>(
-  (
-    {
-      readOnly = false,
-      defaultValue,
-      title = '',
-      onTitleChange,
-      onTextChange,
-      onSelectionChange,
-      className = ''
-    },
-    ref
-  ) => {
+  ({ readOnly = false, defaultValue, onTextChange, onSelectionChange, className = '' }, ref) => {
     const containerRef = useRef<HTMLDivElement | null>(null)
     const editorContainerRef = useRef<HTMLDivElement | null>(null)
     const defaultValueRef = useRef(defaultValue)
@@ -183,17 +172,6 @@ const Editor = forwardRef<Quill, EditorProps>(
         className={`h-full w-full top-0 flex-col border rounded-md ${className}`}
         ref={containerRef}
       >
-        {!readOnly && (
-          <div className="px-3 py-2 border-b">
-            <Input
-              placeholder="Note title"
-              value={title}
-              onChange={(e) => onTitleChange?.(e.target.value)}
-              className="text-lg font-medium border-none focus-visible:ring-0 px-0 h-auto"
-            />
-          </div>
-        )}
-
         {/* Custom Toolbar */}
         {!readOnly && (
           <TooltipProvider>

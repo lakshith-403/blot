@@ -1,4 +1,6 @@
-import { Calendar, Home, Inbox, Search, Settings } from 'lucide-react'
+import { FilePlus, Trash, RefreshCw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { useNotes } from '@/contexts/note-context'
 
 import {
   Sidebar,
@@ -11,53 +13,85 @@ import {
   SidebarMenuItem
 } from '@/components/ui/sidebar'
 
-// Menu items.
-const items = [
-  {
-    title: 'Home',
-    url: '#',
-    icon: Home
-  },
-  {
-    title: 'Inbox',
-    url: '#',
-    icon: Inbox
-  },
-  {
-    title: 'Calendar',
-    url: '#',
-    icon: Calendar
-  },
-  {
-    title: 'Search',
-    url: '#',
-    icon: Search
-  },
-  {
-    title: 'Settings',
-    url: '#',
-    icon: Settings
-  }
-]
-
 export function AppSidebar() {
+  const { notes, loadNotes, createNote, deleteNote, loadNote, currentNote } = useNotes()
+
+  const handleRefresh = () => {
+    loadNotes()
+  }
+
+  const handleCreateNote = () => {
+    createNote()
+  }
+
+  const handleDeleteNote = (e: React.MouseEvent, id: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    deleteNote(id)
+  }
+
+  const handleNoteClick = (e: React.MouseEvent, id: string) => {
+    e.preventDefault()
+    loadNote(id)
+  }
+
   return (
     <Sidebar>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Application</SidebarGroupLabel>
+          <div className="flex items-center justify-between px-4 py-2">
+            <SidebarGroupLabel>My Notes</SidebarGroupLabel>
+            <div className="flex gap-1">
+              <Button variant="ghost" size="icon" title="Refresh notes" onClick={handleRefresh}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" title="Add new note" onClick={handleCreateNote}>
+                <FilePlus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <a href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {notes.length === 0 ? (
+                <div className="px-4 py-3 text-sm text-muted-foreground">
+                  No notes yet. Click the "+" button to create one.
+                </div>
+              ) : (
+                notes.map((note) => (
+                  <SidebarMenuItem key={note.id} className="group">
+                    <SidebarMenuButton asChild>
+                      <a
+                        href="#"
+                        className={`flex items-center justify-between w-full group py-5 ${
+                          currentNote?.id === note.id ? 'bg-muted/50' : ''
+                        }`}
+                        onClick={(e) => handleNoteClick(e, note.id)}
+                      >
+                        <div className="flex items-center">
+                          <div>
+                            <span className="font-medium">
+                              {typeof note.title === 'object' ? 'Untitled Note' : note.title}
+                            </span>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(note.updatedAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Delete note"
+                          onClick={(e) => handleDeleteNote(e, note.id)}
+                        >
+                          <Trash className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

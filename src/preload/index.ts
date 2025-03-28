@@ -13,6 +13,9 @@ const api = {
     update: (id: string, updates: { title?: string; content?: any }) =>
       ipcRenderer.invoke('notes:update', id, updates),
     delete: (id: string) => ipcRenderer.invoke('notes:delete', id)
+  },
+  openai: {
+    improve: (text: string, apiKey: string) => ipcRenderer.invoke('openai:improve', text, apiKey)
   }
 }
 

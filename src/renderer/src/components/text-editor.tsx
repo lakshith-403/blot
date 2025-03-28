@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import OpenAI from 'openai'
 
 // Icons for toolbar buttons
 import {
@@ -77,6 +78,25 @@ const Editor = forwardRef<Quill, EditorProps>(
     const [isHoveringPopover, setIsHoveringPopover] = useState(false)
     const selectionPopoverRef = useRef<HTMLDivElement | null>(null)
     const popoverTimerRef = useRef<number | null>(null)
+    const [isImproving, setIsImproving] = useState(false)
+    const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+    // Create OpenAI client
+    const apiKey = import.meta.env.RENDERER_VITE_OPENAI_API_KEY || ''
+    const openai = new OpenAI({
+      apiKey,
+      dangerouslyAllowBrowser: true,
+      fetch: (url, options) => {
+        console.log('Making OpenAI API request to:', url)
+        return fetch(url, {
+          ...options,
+          headers: {
+            ...options?.headers,
+            'Content-Type': 'application/json'
+          }
+        })
+      }
+    })
 
     // Update refs when props change
     useLayoutEffect(() => {
@@ -196,11 +216,39 @@ const Editor = forwardRef<Quill, EditorProps>(
       }
     }
 
-    const handleImprove = () => {
+    const handleImprove = async () => {
       if (selection) {
-        console.log('Improve text:', selection.text)
-        // This will be integrated with LLM in the future
-        setShowPopover(false)
+        try {
+          setIsImproving(true)
+          setErrorMessage(null)
+
+          if (!apiKey) {
+            throw new Error(
+              'OpenAI API key is missing. Please set RENDERER_VITE_OPENAI_API_KEY in your .env file.'
+            )
+          }
+
+          console.log('Original text:', selection.text)
+
+          // Use IPC to call OpenAI through the main process
+          const improvedText = await window.api.openai.improve(selection.text, apiKey)
+
+          console.log('Improved text:', improvedText)
+
+          if (quillRef.current && improvedText) {
+            // Replace the selected text with the improved version
+            quillRef.current.deleteText(selection.range.index, selection.range.length)
+            quillRef.current.insertText(selection.range.index, improvedText)
+          }
+        } catch (error) {
+          console.error('Error improving text:', error)
+          setErrorMessage(
+            error instanceof Error ? error.message : 'An error occurred while improving text'
+          )
+        } finally {
+          setIsImproving(false)
+          setShowPopover(false)
+        }
       }
     }
 
@@ -449,14 +497,23 @@ const Editor = forwardRef<Quill, EditorProps>(
                   size="sm"
                   className="h-6 px-2 py-0 rounded-md text-xs"
                   onClick={handleImprove}
+                  disabled={isImproving}
+                  title={!apiKey ? 'API key is missing in .env file' : ''}
                 >
                   <Wand2 className="h-3 w-3 mr-1" />
-                  Improve
+                  {isImproving ? 'Improving...' : 'Improve'}
                 </Button>
               </div>
             </div>
           )}
         </div>
+
+        {/* Error message */}
+        {errorMessage && (
+          <div className="absolute bottom-2 right-2 bg-destructive text-destructive-foreground p-2 rounded-md text-sm animate-in slide-in-from-bottom-5">
+            {errorMessage}
+          </div>
+        )}
       </div>
     )
   }

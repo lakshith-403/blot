@@ -1,10 +1,11 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, session } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import fs from 'fs/promises'
 import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
+import fetch from 'node-fetch'
 
 let notesDir: string
 
@@ -28,6 +29,18 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
     }
+  })
+
+  // Set Content Security Policy to allow API requests
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; connect-src 'self' https://api.openai.com; script-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data:; style-src 'self' 'unsafe-inline';"
+        ]
+      }
+    })
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -181,6 +194,55 @@ function setupNotesIPC() {
       return true
     } catch (error) {
       console.error(`Error deleting note ${id}:`, error)
+      throw error
+    }
+  })
+
+  // Handle OpenAI API requests
+  ipcMain.handle('openai:improve', async (_, text, apiKey) => {
+    try {
+      console.log('Making OpenAI API request from main process')
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are a helpful assistant that improves text. Make it more clear, concise, and engaging.'
+            },
+            {
+              role: 'user',
+              content: `Improve this text: ${text}`
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 1000
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = (await response.json()) as Record<string, unknown>
+        throw new Error(`OpenAI API error: ${JSON.stringify(errorData)}`)
+      }
+
+      const data = (await response.json()) as {
+        choices: Array<{
+          message: {
+            content: string
+          }
+        }>
+      }
+
+      return data.choices[0]?.message?.content || ''
+    } catch (error) {
+      console.error('Error improving text with OpenAI:', error)
       throw error
     }
   })

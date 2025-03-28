@@ -16,6 +16,7 @@ export default defineConfig({
         '@': resolve('src/renderer/src')
       }
     },
-    plugins: [react()]
+    plugins: [react()],
+    envPrefix: ['VITE_', 'RENDERER_VITE_']
   }
 })

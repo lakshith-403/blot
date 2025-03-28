@@ -11,5 +11,8 @@ interface Window {
       update: (id: string, updates: { title?: string; content?: any }) => Promise<Note>
       delete: (id: string) => Promise<boolean>
     }
+    openai: {
+      improve: (text: string, apiKey: string) => Promise<string>
+    }
   }
 }

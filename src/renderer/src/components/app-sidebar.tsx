@@ -14,24 +14,34 @@ import {
 } from '@/components/ui/sidebar'
 
 export function AppSidebar() {
-  const { notes, loadNotes, createNote, deleteNote, loadNote, currentNote } = useNotes()
+  const { notes, loadNotes, createNote, deleteNote, loadNote, currentNote, forceSave } = useNotes()
 
   const handleRefresh = () => {
     loadNotes()
   }
 
-  const handleCreateNote = () => {
+  const handleCreateNote = async () => {
+    // Force save any pending changes before creating a new note
+    await forceSave()
     createNote()
   }
 
-  const handleDeleteNote = (e: React.MouseEvent, id: string) => {
+  const handleDeleteNote = async (e: React.MouseEvent, id: string) => {
     e.preventDefault()
     e.stopPropagation()
+
+    // Force save if we're deleting the current note
+    if (currentNote && currentNote.id !== id) {
+      await forceSave()
+    }
+
     deleteNote(id)
   }
 
-  const handleNoteClick = (e: React.MouseEvent, id: string) => {
+  const handleNoteClick = async (e: React.MouseEvent, id: string) => {
     e.preventDefault()
+
+    // No need to manually call forceSave here as we updated loadNote to handle this
     loadNote(id)
   }
 

@@ -18,6 +18,7 @@ interface NoteContextType {
   loadNote: (id: string) => Promise<void>
   saveCurrentNote: (updates: { title?: string; content?: any }) => Promise<void>
   updateNoteCache: (updates: { title?: string; content?: any }) => void
+  forceSave: () => Promise<void>
   deleteNote: (id: string) => Promise<void>
   setCurrentNote: (note: Note | null) => void
 }
@@ -81,6 +82,12 @@ export const NoteProvider = ({ children }: NoteProviderProps) => {
 
   const loadNote = async (id: string) => {
     console.log('Loading note:', id)
+
+    // Force save the current note before loading a new one
+    if (currentNote && currentNote.id !== id) {
+      await forceSave()
+    }
+
     setIsLoading(true)
     try {
       const note = await noteService.getNote(id)
@@ -230,6 +237,18 @@ export const NoteProvider = ({ children }: NoteProviderProps) => {
     loadNotes()
   }, [])
 
+  // Force save any pending changes in the cache
+  const forceSave = useCallback(async () => {
+    if (!currentNote || !isDirtyRef.current || !cacheRef.current) return
+
+    try {
+      await saveCurrentNote(cacheRef.current)
+      isDirtyRef.current = false
+    } catch (error) {
+      console.error('Error during force save:', error)
+    }
+  }, [currentNote])
+
   const value = {
     notes,
     currentNote,
@@ -239,6 +258,7 @@ export const NoteProvider = ({ children }: NoteProviderProps) => {
     loadNote,
     saveCurrentNote,
     updateNoteCache,
+    forceSave,
     deleteNote,
     setCurrentNote
   }

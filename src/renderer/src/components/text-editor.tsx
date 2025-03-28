@@ -11,6 +11,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 // Icons for toolbar buttons
 import {
@@ -22,7 +23,8 @@ import {
   Quote,
   AlignLeft,
   AlignCenter,
-  AlignRight
+  AlignRight,
+  Wand2
 } from 'lucide-react'
 
 interface EditorProps {
@@ -67,6 +69,14 @@ const Editor = forwardRef<Quill, EditorProps>(
     const [formats, setFormats] = useState<FormatState>(DEFAULT_FORMATS)
     const ignoreChangeRef = useRef(false) // Flag to avoid triggering onTextChange during programmatic updates
     const isInitializedRef = useRef(false)
+
+    // State for text selection and popover
+    const [selection, setSelection] = useState<{ text: string; range: any } | null>(null)
+    const [showPopover, setShowPopover] = useState(false)
+    const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0 })
+    const [isHoveringPopover, setIsHoveringPopover] = useState(false)
+    const selectionPopoverRef = useRef<HTMLDivElement | null>(null)
+    const popoverTimerRef = useRef<number | null>(null)
 
     // Update refs when props change
     useLayoutEffect(() => {
@@ -137,6 +147,63 @@ const Editor = forwardRef<Quill, EditorProps>(
       }
     }, [readOnly])
 
+    // Handle text selection
+    const handleSelectionChange = (range: any, oldRange: any, source: string) => {
+      if (quillRef.current && range && range.length > 0 && !readOnly) {
+        const text = quillRef.current.getText(range.index, range.length)
+        if (text.trim().length > 0) {
+          // Position the popover near the selection
+          try {
+            const rangeBounds = quillRef.current.getBounds(range.index, range.length)
+
+            // Calculate position relative to the editor
+            const editorRect = editorContainerRef.current?.getBoundingClientRect()
+            if (editorRect && rangeBounds) {
+              setPopoverPosition({
+                top: Math.max(rangeBounds.top - 30, 5),
+                left: rangeBounds.left + 10 // Center over selection
+              })
+
+              setSelection({ text, range })
+              setShowPopover(true)
+            }
+          } catch (error) {
+            console.error('Error getting bounds:', error)
+          }
+
+          // Clear any existing timer
+          if (popoverTimerRef.current) {
+            window.clearTimeout(popoverTimerRef.current)
+          }
+        }
+      } else if (!isHoveringPopover) {
+        // Only hide if not hovering over popover
+        // Add a small delay before hiding to allow clicking the buttons
+        if (popoverTimerRef.current) {
+          window.clearTimeout(popoverTimerRef.current)
+        }
+
+        popoverTimerRef.current = window.setTimeout(() => {
+          setShowPopover(false)
+          setSelection(null)
+        }, 300) // Small delay to allow clicking buttons
+      }
+
+      // Call the original onSelectionChange handler and update formats
+      updateFormats()
+      if (onSelectionChangeRef.current) {
+        onSelectionChangeRef.current(range, oldRange, source)
+      }
+    }
+
+    const handleImprove = () => {
+      if (selection) {
+        console.log('Improve text:', selection.text)
+        // This will be integrated with LLM in the future
+        setShowPopover(false)
+      }
+    }
+
     useEffect(() => {
       const container = containerRef.current
       if (!container || !editorContainerRef.current) return
@@ -167,10 +234,7 @@ const Editor = forwardRef<Quill, EditorProps>(
         }
       })
 
-      quill.on(Quill.events.SELECTION_CHANGE, (...args) => {
-        updateFormats()
-        onSelectionChangeRef.current?.(...args)
-      })
+      quill.on(Quill.events.SELECTION_CHANGE, handleSelectionChange)
 
       return () => {
         if (ref && typeof ref === 'object') {
@@ -366,7 +430,33 @@ const Editor = forwardRef<Quill, EditorProps>(
         )}
 
         {/* Editor container */}
-        <div className="flex-1 overflow-auto" ref={editorContainerRef}></div>
+        <div className="flex-1 overflow-auto relative mt-5" ref={editorContainerRef}>
+          {/* Selection popover */}
+          {showPopover && selection && (
+            <div
+              className="absolute z-500 animate-in fade-in-0 zoom-in-95 drop-shadow-sm"
+              ref={selectionPopoverRef}
+              style={{
+                top: `${popoverPosition.top}px`,
+                left: `${popoverPosition.left}px`
+              }}
+              onMouseEnter={() => setIsHoveringPopover(true)}
+              onMouseLeave={() => setIsHoveringPopover(false)}
+            >
+              <div className="bg-popover rounded-md border border-border inline-flex">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 py-0 rounded-md text-xs"
+                  onClick={handleImprove}
+                >
+                  <Wand2 className="h-3 w-3 mr-1" />
+                  Improve
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     )
   }

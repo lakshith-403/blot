@@ -111,6 +111,9 @@ const Editor = forwardRef<Quill, EditorProps>(
     // Update formats when selection changes
     const updateFormats = () => {
       if (!quillRef.current) return
+      if (!quillRef.current.hasFocus()) {
+        return
+      }
 
       const quill = quillRef.current
       const formats = quill.getFormat()

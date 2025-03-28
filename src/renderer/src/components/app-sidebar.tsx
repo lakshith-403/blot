@@ -74,13 +74,17 @@ export function AppSidebar() {
                       <a
                         href="#"
                         className={`flex items-center justify-between w-full group py-5 ${
-                          currentNote?.id === note.id ? 'bg-muted/50' : ''
+                          currentNote?.id === note.id ? 'bg-muted/100' : ''
                         }`}
                         onClick={(e) => handleNoteClick(e, note.id)}
                       >
                         <div className="flex items-center">
                           <div>
-                            <span className="font-medium">
+                            <span
+                              className={`font-medium ${
+                                currentNote?.id === note.id ? 'font-bold' : ''
+                              }`}
+                            >
                               {typeof note.title === 'object' ? 'Untitled Note' : note.title}
                             </span>
                             <p className="text-xs text-muted-foreground">

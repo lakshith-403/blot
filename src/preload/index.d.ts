@@ -16,8 +16,13 @@ export interface NotesAPI {
   delete: (id: string) => Promise<boolean>
 }
 
+export interface OpenAIAPI {
+  improve: (text: string, range: [number, number], apiKey: string) => Promise<string>
+}
+
 export interface API {
   notes: NotesAPI
+  openai: OpenAIAPI
 }
 
 declare global {

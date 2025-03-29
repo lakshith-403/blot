@@ -199,9 +199,17 @@ function setupNotesIPC() {
   })
 
   // Handle OpenAI API requests
-  ipcMain.handle('openai:improve', async (_, text, apiKey) => {
+  ipcMain.handle('openai:improve', async (_, text, r, apiKey) => {
     try {
       console.log('Making OpenAI API request from main process')
+      const range = [r['index'], r['index'] + r['length']]
+
+      const roundedText = text.substring(range[0], range[1])
+      const roundedTextWithDelimiter = `~~${roundedText}~~`
+      console.log('Rounded text:', roundedText)
+      console.log('Rounded text with delimiter:', roundedTextWithDelimiter)
+      const markedText = text.slice(0, range[0]) + roundedTextWithDelimiter + text.slice(range[1])
+      console.log('Marked text:', markedText)
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -214,12 +222,31 @@ function setupNotesIPC() {
           messages: [
             {
               role: 'system',
-              content:
-                'You are a helpful assistant that improves text. Make it more clear, concise, and engaging.'
+              content: `
+                You are a helpful assistant that improves text. Fix typos, mistakes, grammar, and make it more clear.
+                Keep your changes to a minimum. Focus is on fixing mistakes, not adding new content.
+                You're given the entire text and a portion sorrounded with ~~ that you need to improve.
+                do not change anything outside of the portion sorrounded with ~~
+                Even if the marked portion ends in the middle of a word, only output characters from the marked portion.
+                Output ONLY the improved text. That means you should not include the original text or any other text outside of the portion sorrounded with ~~
+
+                e.g.:
+                Original text:
+                Hello Where can i find t~~he restura~~nt?
+                Marked text: 
+                Hello Where can i find t~~he restura~~nt?
+                Output text:
+                he restaura
+
+                Response should only contain the improved text. In this example the response should be:
+                he restaurant
+
+                DO NOT say anything else than the improved text.
+                `
             },
             {
               role: 'user',
-              content: `Improve this text: ${text}`
+              content: `Orignal text:\n ${text} \n\n Improve this portion:\n ${markedText}`
             }
           ],
           temperature: 0.7,

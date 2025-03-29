@@ -15,7 +15,8 @@ const api = {
     delete: (id: string) => ipcRenderer.invoke('notes:delete', id)
   },
   openai: {
-    improve: (text: string, apiKey: string) => ipcRenderer.invoke('openai:improve', text, apiKey)
+    improve: (text: string, range: [number, number], apiKey: string) =>
+      ipcRenderer.invoke('openai:improve', text, range, apiKey)
   }
 }
 

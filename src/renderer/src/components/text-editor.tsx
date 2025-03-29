@@ -13,6 +13,16 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import OpenAI from 'openai'
+import ReactDiffViewer from 'react-diff-viewer-continued'
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle
+} from '@/components/ui/drawer'
 
 // Icons for toolbar buttons
 import {
@@ -25,7 +35,8 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
-  Wand2
+  Wand2,
+  Loader2
 } from 'lucide-react'
 
 interface EditorProps {
@@ -81,22 +92,13 @@ const Editor = forwardRef<Quill, EditorProps>(
     const [isImproving, setIsImproving] = useState(false)
     const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
+    // New state for diff drawer
+    const [showDiffDrawer, setShowDiffDrawer] = useState(false)
+    const [originalText, setOriginalText] = useState('')
+    const [improvedText, setImprovedText] = useState('')
+
     // Create OpenAI client
     const apiKey = import.meta.env.RENDERER_VITE_OPENAI_API_KEY || ''
-    const openai = new OpenAI({
-      apiKey,
-      dangerouslyAllowBrowser: true,
-      fetch: (url, options) => {
-        console.log('Making OpenAI API request to:', url)
-        return fetch(url, {
-          ...options,
-          headers: {
-            ...options?.headers,
-            'Content-Type': 'application/json'
-          }
-        })
-      }
-    })
 
     // Update refs when props change
     useLayoutEffect(() => {
@@ -218,9 +220,14 @@ const Editor = forwardRef<Quill, EditorProps>(
 
     const handleImprove = async () => {
       if (selection) {
+        console.log('Improving text:', selection.range)
         try {
           setIsImproving(true)
+          setShowPopover(false)
           setErrorMessage(null)
+
+          // Store original text
+          setOriginalText(selection.text)
 
           if (!apiKey) {
             throw new Error(
@@ -229,17 +236,21 @@ const Editor = forwardRef<Quill, EditorProps>(
           }
 
           console.log('Original text:', selection.text)
+          console.log('Quill text:', quillRef.current?.getText())
 
           // Use IPC to call OpenAI through the main process
-          const improvedText = await window.api.openai.improve(selection.text, apiKey)
+          const improved = await window.api.openai.improve(
+            quillRef.current?.getText() || '',
+            selection.range,
+            apiKey
+          )
+          console.log('Improved text:', improved)
 
-          console.log('Improved text:', improvedText)
+          // Store improved text
+          setImprovedText(improved)
 
-          if (quillRef.current && improvedText) {
-            // Replace the selected text with the improved version
-            quillRef.current.deleteText(selection.range.index, selection.range.length)
-            quillRef.current.insertText(selection.range.index, improvedText)
-          }
+          // Show the diff drawer
+          setShowDiffDrawer(true)
         } catch (error) {
           console.error('Error improving text:', error)
           setErrorMessage(
@@ -247,9 +258,21 @@ const Editor = forwardRef<Quill, EditorProps>(
           )
         } finally {
           setIsImproving(false)
-          setShowPopover(false)
         }
       }
+    }
+
+    const handleAcceptImprovement = () => {
+      if (quillRef.current && selection && improvedText) {
+        // Replace the selected text with the improved version
+        quillRef.current.deleteText(selection.range.index, selection.range.length)
+        quillRef.current.insertText(selection.range.index, improvedText)
+        setShowDiffDrawer(false)
+      }
+    }
+
+    const handleRejectImprovement = () => {
+      setShowDiffDrawer(false)
     }
 
     useEffect(() => {
@@ -497,11 +520,20 @@ const Editor = forwardRef<Quill, EditorProps>(
                   size="sm"
                   className="h-6 px-2 py-0 rounded-md text-xs"
                   onClick={handleImprove}
-                  disabled={isImproving}
+                  disabled={isImproving || !apiKey}
                   title={!apiKey ? 'API key is missing in .env file' : ''}
                 >
-                  <Wand2 className="h-3 w-3 mr-1" />
-                  {isImproving ? 'Improving...' : 'Improve'}
+                  {isImproving ? (
+                    <>
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      Improving...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="h-3 w-3 mr-1" />
+                      Improve
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -514,6 +546,44 @@ const Editor = forwardRef<Quill, EditorProps>(
             {errorMessage}
           </div>
         )}
+
+        {/* Global loading state */}
+        {isImproving && (
+          <div className="fixed inset-0 bg-background/50 flex items-center justify-center z-50">
+            <div className="bg-background p-6 rounded-lg shadow-lg flex flex-col items-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+              <p className="text-sm">Improving your text...</p>
+            </div>
+          </div>
+        )}
+
+        {/* Diff Drawer */}
+        <Drawer open={showDiffDrawer} onOpenChange={setShowDiffDrawer}>
+          <DrawerContent className="max-h-[85vh]">
+            <DrawerHeader>
+              <DrawerTitle>Text Improvement</DrawerTitle>
+              <DrawerDescription>Review the suggested changes to your text</DrawerDescription>
+            </DrawerHeader>
+            <div className="p-4 overflow-auto max-h-[calc(85vh-180px)]">
+              <ReactDiffViewer
+                oldValue={originalText}
+                newValue={improvedText}
+                splitView={true}
+                useDarkTheme={false}
+                leftTitle="Original"
+                rightTitle="Improved"
+              />
+            </div>
+            <DrawerFooter className="flex-row justify-end gap-2">
+              <DrawerClose asChild>
+                <Button variant="outline" onClick={handleRejectImprovement}>
+                  Reject
+                </Button>
+              </DrawerClose>
+              <Button onClick={handleAcceptImprovement}>Accept</Button>
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
       </div>
     )
   }

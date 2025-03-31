@@ -46,7 +46,7 @@ const noteService = new NoteService()
 
 export function ChatSidebar() {
   const { isOpen } = useChatSidebar()
-  const { currentNote } = useNotes()
+  const { currentNote, getCachedContent } = useNotes()
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const [inputValue, setInputValue] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -82,7 +82,9 @@ export function ChatSidebar() {
       }
     }
 
-    loadChatHistory()
+    if (!isStreaming) {
+      loadChatHistory()
+    }
   }, [currentNote])
 
   useEffect(() => {
@@ -118,6 +120,7 @@ export function ChatSidebar() {
     })
 
     const removeDoneListener = window.api.openai.onChatDone(() => {
+      console.log('Chat done')
       setIsStreaming(false)
       currentAiMessageIdRef.current = null
     })
@@ -160,6 +163,9 @@ export function ChatSidebar() {
     e.preventDefault()
     if (!inputValue.trim() || isStreaming || !currentNote) return
 
+    // Get the cached content (includes unsaved changes)
+    const cachedNoteData = getCachedContent()
+
     const userMessage: Message = {
       id: crypto.randomUUID(),
       content: inputValue,
@@ -186,11 +192,14 @@ export function ChatSidebar() {
     try {
       setIsStreaming(true)
 
-      // Extract note content from the ops array
+      // Extract note content from the ops array using cached content
       let noteContent = ''
-      if (currentNote && currentNote.content && Array.isArray(currentNote.content.ops)) {
+      const noteContentData = cachedNoteData?.content || currentNote.content
+      console.log('noteContentData', cachedNoteData)
+
+      if (noteContentData && Array.isArray(noteContentData.ops)) {
         // Extract text from each insert operation
-        noteContent = currentNote.content.ops
+        noteContent = noteContentData.ops
           .filter((op) => op && typeof op.insert === 'string')
           .map((op) => op.insert)
           .join('')
@@ -207,8 +216,10 @@ export function ChatSidebar() {
 
       // Enhance the prompt with metadata if available
       let noteMeta = ''
-      if (currentNote.title) {
-        noteMeta += `Title: ${currentNote.title}\n`
+      const noteTitle = cachedNoteData?.title || currentNote.title
+
+      if (noteTitle) {
+        noteMeta += `Title: ${noteTitle}\n`
       }
       if (currentNote.createdAt) {
         noteMeta += `Created: ${new Date(currentNote.createdAt).toLocaleString()}\n`

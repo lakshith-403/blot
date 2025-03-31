@@ -23,6 +23,7 @@ interface NoteContextType {
   setCurrentNote: (note: Note | null) => void
   getChatHistory: (noteId: string) => Promise<any[]>
   clearChatHistory: (noteId: string) => Promise<void>
+  getCachedContent: () => { title?: string; content?: any } | null
 }
 
 const NoteContext = createContext<NoteContextType | undefined>(undefined)
@@ -274,6 +275,25 @@ export const NoteProvider = ({ children }: NoteProviderProps) => {
     }
   }
 
+  // Get the current cached content (latest unsaved changes)
+  const getCachedContent = useCallback(() => {
+    if (!currentNote) return null
+
+    // If there are unsaved changes, merge them with the current note
+    if (cacheRef.current) {
+      return {
+        title: cacheRef.current.title ?? currentNote.title,
+        content: cacheRef.current.content ?? currentNote.content
+      }
+    }
+
+    // Otherwise, return the current note content
+    return {
+      title: currentNote.title,
+      content: currentNote.content
+    }
+  }, [currentNote])
+
   const value = {
     notes,
     currentNote,
@@ -287,7 +307,8 @@ export const NoteProvider = ({ children }: NoteProviderProps) => {
     deleteNote,
     setCurrentNote,
     getChatHistory,
-    clearChatHistory
+    clearChatHistory,
+    getCachedContent
   }
 
   return <NoteContext.Provider value={value}>{children}</NoteContext.Provider>

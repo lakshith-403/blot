@@ -16,7 +16,9 @@ const api = {
   },
   openai: {
     improve: (text: string, range: [number, number], apiKey: string) =>
-      ipcRenderer.invoke('openai:improve', text, range, apiKey)
+      ipcRenderer.invoke('openai:improve', text, range, apiKey),
+    chat: (messages: Array<{ role: string; content: string }>, apiKey: string) =>
+      ipcRenderer.invoke('openai:chat', messages, apiKey)
   }
 }
 

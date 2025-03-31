@@ -1,6 +1,10 @@
 interface IElectronAPI {
   openai: {
-    improve: (text: string, apiKey: string) => Promise<string>
+    improve: (text: string, selection: any, apiKey: string) => Promise<string>
+    chat: (
+      messages: Array<{ role: string; content: string }>,
+      apiKey: string
+    ) => Promise<ReadableStream>
   }
   notes: {
     getAll: () => Promise<

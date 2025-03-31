@@ -5,7 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import fs from 'fs/promises'
 import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
-import fetch from 'node-fetch'
+import OpenAI from 'openai'
 
 let notesDir: string
 
@@ -198,7 +198,64 @@ function setupNotesIPC() {
     }
   })
 
-  // Handle OpenAI API requests
+  // Handle OpenAI chat API requests with streaming
+  ipcMain.handle('openai:chat', async (event, messages, apiKey) => {
+    try {
+      console.log('Making OpenAI Chat API request from main process')
+
+      const openai = new OpenAI({
+        apiKey: apiKey
+      })
+
+      // Set up interrupt handler
+      let aborted = false
+      const interruptHandler = () => {
+        console.log('Interrupting OpenAI chat stream')
+        aborted = true
+      }
+      ipcMain.once('openai:chat-interrupt', interruptHandler)
+
+      try {
+        const stream = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: messages,
+          stream: true
+        })
+
+        for await (const chunk of stream) {
+          if (aborted) {
+            await stream.controller.abort()
+            break
+          }
+
+          const content = chunk.choices[0]?.delta?.content || ''
+          if (content) {
+            // Format the chunk as expected by the renderer
+            const formattedChunk = `data: ${JSON.stringify({
+              choices: [{ delta: { content } }]
+            })}\n\n`
+
+            event.sender.send('openai:chat-chunk', formattedChunk)
+          }
+        }
+
+        event.sender.send('openai:chat-done')
+        return true
+      } finally {
+        // Clean up interrupt handler
+        ipcMain.removeListener('openai:chat-interrupt', interruptHandler)
+      }
+    } catch (error: unknown) {
+      console.error('Error in OpenAI chat:', error)
+      event.sender.send(
+        'openai:chat-error',
+        error instanceof Error ? error.message : 'Unknown error'
+      )
+      throw error
+    }
+  })
+
+  // Handle OpenAI API requests for improving text
   ipcMain.handle('openai:improve', async (_, text, r, apiKey) => {
     try {
       console.log('Making OpenAI API request from main process')
@@ -211,63 +268,47 @@ function setupNotesIPC() {
       const markedText = text.slice(0, range[0]) + roundedTextWithDelimiter + text.slice(range[1])
       console.log('Marked text:', markedText)
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'system',
-              content: `
-                You are a helpful assistant that improves text. Fix typos, mistakes, grammar, and make it more clear.
-                Keep your changes to a minimum. Focus is on fixing mistakes, not adding new content.
-                You're given the entire text and a portion sorrounded with ~~ that you need to improve.
-                do not change anything outside of the portion sorrounded with ~~
-                Even if the marked portion ends in the middle of a word, only output characters from the marked portion.
-                Output ONLY the improved text. That means you should not include the original text or any other text outside of the portion sorrounded with ~~
-
-                e.g.:
-                Original text:
-                Hello Where can i find t~~he restura~~nt?
-                Marked text: 
-                Hello Where can i find t~~he restura~~nt?
-                Output text:
-                he restaura
-
-                Response should only contain the improved text. In this example the response should be:
-                he restaurant
-
-                DO NOT say anything else than the improved text.
-                `
-            },
-            {
-              role: 'user',
-              content: `Orignal text:\n ${text} \n\n Improve this portion:\n ${markedText}`
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 1000
-        })
+      const openai = new OpenAI({
+        apiKey: apiKey
       })
 
-      if (!response.ok) {
-        const errorData = (await response.json()) as Record<string, unknown>
-        throw new Error(`OpenAI API error: ${JSON.stringify(errorData)}`)
-      }
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: `
+              You are a helpful assistant that improves text. Fix typos, mistakes, grammar, and make it more clear.
+              Keep your changes to a minimum. Focus is on fixing mistakes, not adding new content.
+              You're given the entire text and a portion sorrounded with ~~ that you need to improve.
+              do not change anything outside of the portion sorrounded with ~~
+              Even if the marked portion ends in the middle of a word, only output characters from the marked portion.
+              Output ONLY the improved text. That means you should not include the original text or any other text outside of the portion sorrounded with ~~
 
-      const data = (await response.json()) as {
-        choices: Array<{
-          message: {
-            content: string
+              e.g.:
+              Original text:
+              Hello Where can i find t~~he restura~~nt?
+              Marked text: 
+              Hello Where can i find t~~he restura~~nt?
+              Output text:
+              he restaura
+
+              Response should only contain the improved text. In this example the response should be:
+              he restaurant
+
+              DO NOT say anything else than the improved text.
+              `
+          },
+          {
+            role: 'user',
+            content: `Orignal text:\n ${text} \n\n Improve this portion:\n ${markedText}`
           }
-        }>
-      }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000
+      })
 
-      return data.choices[0]?.message?.content || ''
+      return completion.choices[0]?.message?.content || ''
     } catch (error) {
       console.error('Error improving text with OpenAI:', error)
       throw error

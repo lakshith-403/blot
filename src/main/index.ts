@@ -8,16 +8,18 @@ import { v4 as uuidv4 } from 'uuid'
 import OpenAI from 'openai'
 
 let notesDir: string
+let chatsDir: string
 
-async function ensureNotesDirExists(): Promise<void> {
+async function ensureDirectoriesExist(): Promise<void> {
   try {
     await fs.mkdir(notesDir, { recursive: true })
+    await fs.mkdir(chatsDir, { recursive: true })
   } catch (error) {
-    console.error('Failed to create notes directory:', error)
+    console.error('Failed to create directories:', error)
   }
 }
 
-// Ensure all notes have the required fields
+// Migrate existing notes to the new structure
 async function migrateExistingNotes(): Promise<void> {
   try {
     const files = await fs.readdir(notesDir)
@@ -29,11 +31,15 @@ async function migrateExistingNotes(): Promise<void> {
           const data = await fs.readFile(filePath, 'utf-8')
           const note = JSON.parse(data)
 
-          // Add chatHistory if it doesn't exist
-          if (!note.chatHistory) {
-            note.chatHistory = []
+          // Migrate chatHistory to separate file if it exists
+          if (note.chatHistory && note.chatHistory.length > 0) {
+            const chatFilePath = path.join(chatsDir, `${note.id}.json`)
+            await fs.writeFile(chatFilePath, JSON.stringify(note.chatHistory, null, 2), 'utf-8')
+
+            // Remove chatHistory from note
+            delete note.chatHistory
             await fs.writeFile(filePath, JSON.stringify(note, null, 2), 'utf-8')
-            console.log(`Added chatHistory to note ${note.id}`)
+            console.log(`Migrated chat history for note ${note.id}`)
           }
         } catch (error) {
           console.error(`Error migrating note ${file}:`, error)
@@ -97,7 +103,9 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.blot')
 
   notesDir = path.join(app.getPath('userData'), 'notes')
-  ensureNotesDirExists()
+  chatsDir = path.join(app.getPath('userData'), 'chats')
+
+  ensureDirectoriesExist()
     .then(() => migrateExistingNotes())
     .catch((error) => console.error('Error during initialization:', error))
 
@@ -132,11 +140,6 @@ function setupNotesIPC() {
         content: any
         createdAt: string
         updatedAt: string
-        chatHistory?: Array<{
-          role: string
-          content: string
-          timestamp: string
-        }>
       }> = []
 
       for (const file of files) {
@@ -164,7 +167,20 @@ function setupNotesIPC() {
     try {
       const filePath = path.join(notesDir, `${id}.json`)
       const data = await fs.readFile(filePath, 'utf-8')
-      return JSON.parse(data)
+      const note = JSON.parse(data)
+
+      // Get chat history from separate file
+      const chatFilePath = path.join(chatsDir, `${id}.json`)
+      try {
+        const chatData = await fs.readFile(chatFilePath, 'utf-8')
+        const chatHistory = JSON.parse(chatData)
+
+        // Add chat history to note object before returning
+        return { ...note, chatHistory }
+      } catch (error) {
+        console.log(`No chat file found for note ${id}`)
+        return { ...note, chatHistory: [] }
+      }
     } catch (error) {
       console.error(`Error getting note ${id}:`, error)
       return null
@@ -183,12 +199,15 @@ function setupNotesIPC() {
           typeof noteData.title === 'object' ? 'Untitled Note' : noteData.title || 'Untitled Note',
         content: noteData.content || '',
         createdAt: now,
-        updatedAt: now,
-        chatHistory: []
+        updatedAt: now
       }
 
       const filePath = path.join(notesDir, `${id}.json`)
       await fs.writeFile(filePath, JSON.stringify(note, null, 2), 'utf-8')
+
+      // Create empty chat file
+      const chatFilePath = path.join(chatsDir, `${id}.json`)
+      await fs.writeFile(chatFilePath, JSON.stringify([], null, 2), 'utf-8')
 
       return note
     } catch (error) {
@@ -208,8 +227,7 @@ function setupNotesIPC() {
         ...note,
         ...(updates && {
           title: typeof updates.title === 'object' ? note.title : updates.title || note.title,
-          content: updates.content || note.content,
-          chatHistory: updates.chatHistory || note.chatHistory || []
+          content: updates.content || note.content
         }),
         updatedAt: new Date().toISOString()
       }
@@ -226,8 +244,18 @@ function setupNotesIPC() {
   // Delete note
   ipcMain.handle('notes:delete', async (_, id) => {
     try {
+      // Delete note file
       const filePath = path.join(notesDir, `${id}.json`)
       await fs.unlink(filePath)
+
+      // Also delete associated chat file if it exists
+      try {
+        const chatFilePath = path.join(chatsDir, `${id}.json`)
+        await fs.unlink(chatFilePath)
+      } catch (error) {
+        console.log(`No chat file found for note ${id}`)
+      }
+
       return true
     } catch (error) {
       console.error(`Error deleting note ${id}:`, error)
@@ -242,13 +270,28 @@ function setupNotesIPC() {
         throw new Error('Note ID is required')
       }
 
-      const filePath = path.join(notesDir, `${noteId}.json`)
-      const data = await fs.readFile(filePath, 'utf-8')
-      const note = JSON.parse(data)
+      // Get the note to update its updatedAt timestamp
+      const noteFilePath = path.join(notesDir, `${noteId}.json`)
+      const noteData = await fs.readFile(noteFilePath, 'utf-8')
+      const note = JSON.parse(noteData)
 
-      // Initialize chatHistory if it doesn't exist
-      if (!note.chatHistory) {
-        note.chatHistory = []
+      // Update note's updatedAt timestamp
+      note.updatedAt = new Date().toISOString()
+      await fs.writeFile(noteFilePath, JSON.stringify(note, null, 2), 'utf-8')
+
+      // Get chat history from separate file
+      const chatFilePath = path.join(chatsDir, `${noteId}.json`)
+      let chatHistory: Array<{
+        role: string
+        content: string
+        timestamp: string
+      }> = []
+
+      try {
+        const chatData = await fs.readFile(chatFilePath, 'utf-8')
+        chatHistory = JSON.parse(chatData)
+      } catch (error) {
+        console.log(`Creating new chat file for note ${noteId}`)
       }
 
       // Add timestamp to the message
@@ -258,12 +301,13 @@ function setupNotesIPC() {
       }
 
       // Add message to chat history
-      note.chatHistory.push(newMessage)
-      note.updatedAt = new Date().toISOString()
+      chatHistory.push(newMessage)
 
-      await fs.writeFile(filePath, JSON.stringify(note, null, 2), 'utf-8')
+      // Save chat history to separate file
+      await fs.writeFile(chatFilePath, JSON.stringify(chatHistory, null, 2), 'utf-8')
 
-      return note
+      // Return updated note with chat history
+      return { ...note, chatHistory }
     } catch (error) {
       console.error(`Error adding chat message to note ${noteId}:`, error)
       throw error
@@ -277,16 +321,21 @@ function setupNotesIPC() {
         throw new Error('Note ID is required')
       }
 
-      const filePath = path.join(notesDir, `${noteId}.json`)
-      const data = await fs.readFile(filePath, 'utf-8')
-      const note = JSON.parse(data)
+      // Get the note to update its updatedAt timestamp
+      const noteFilePath = path.join(notesDir, `${noteId}.json`)
+      const noteData = await fs.readFile(noteFilePath, 'utf-8')
+      const note = JSON.parse(noteData)
 
-      note.chatHistory = []
+      // Update note's updatedAt timestamp
       note.updatedAt = new Date().toISOString()
+      await fs.writeFile(noteFilePath, JSON.stringify(note, null, 2), 'utf-8')
 
-      await fs.writeFile(filePath, JSON.stringify(note, null, 2), 'utf-8')
+      // Clear chat history by writing empty array to chat file
+      const chatFilePath = path.join(chatsDir, `${noteId}.json`)
+      await fs.writeFile(chatFilePath, JSON.stringify([], null, 2), 'utf-8')
 
-      return note
+      // Return updated note with empty chat history
+      return { ...note, chatHistory: [] }
     } catch (error) {
       console.error(`Error clearing chat history for note ${noteId}:`, error)
       throw error
@@ -300,11 +349,16 @@ function setupNotesIPC() {
         throw new Error('Note ID is required')
       }
 
-      const filePath = path.join(notesDir, `${noteId}.json`)
-      const data = await fs.readFile(filePath, 'utf-8')
-      const note = JSON.parse(data)
+      const chatFilePath = path.join(chatsDir, `${noteId}.json`)
 
-      return note.chatHistory || []
+      try {
+        const data = await fs.readFile(chatFilePath, 'utf-8')
+        return JSON.parse(data)
+      } catch (error) {
+        console.log(`No chat file found for note ${noteId}, creating empty one`)
+        await fs.writeFile(chatFilePath, JSON.stringify([], null, 2), 'utf-8')
+        return []
+      }
     } catch (error) {
       console.error(`Error getting chat history for note ${noteId}:`, error)
       return []
@@ -393,23 +447,38 @@ function setupNotesIPC() {
   // Helper function to save a message to a note's chat history
   async function saveMessageToNote(noteId: string, message: { role: string; content: string }) {
     try {
-      const filePath = path.join(notesDir, `${noteId}.json`)
-      const data = await fs.readFile(filePath, 'utf-8')
-      const note = JSON.parse(data)
+      // Get the note to update its updatedAt timestamp
+      const noteFilePath = path.join(notesDir, `${noteId}.json`)
+      const noteData = await fs.readFile(noteFilePath, 'utf-8')
+      const note = JSON.parse(noteData)
 
-      // Initialize chatHistory if it doesn't exist
-      if (!note.chatHistory) {
-        note.chatHistory = []
+      // Update note's updatedAt timestamp
+      note.updatedAt = new Date().toISOString()
+      await fs.writeFile(noteFilePath, JSON.stringify(note, null, 2), 'utf-8')
+
+      // Get chat history from separate file
+      const chatFilePath = path.join(chatsDir, `${noteId}.json`)
+      let chatHistory: Array<{
+        role: string
+        content: string
+        timestamp: string
+      }> = []
+
+      try {
+        const chatData = await fs.readFile(chatFilePath, 'utf-8')
+        chatHistory = JSON.parse(chatData)
+      } catch (error) {
+        console.log(`Creating new chat file for note ${noteId}`)
       }
 
       // Add message to chat history with timestamp
-      note.chatHistory.push({
+      chatHistory.push({
         ...message,
         timestamp: new Date().toISOString()
       })
 
-      note.updatedAt = new Date().toISOString()
-      await fs.writeFile(filePath, JSON.stringify(note, null, 2), 'utf-8')
+      // Save chat history to separate file
+      await fs.writeFile(chatFilePath, JSON.stringify(chatHistory, null, 2), 'utf-8')
     } catch (error) {
       console.error(`Error saving message to note ${noteId}:`, error)
     }

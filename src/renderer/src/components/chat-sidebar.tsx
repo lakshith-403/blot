@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useChatSidebar } from '@/contexts/chat-sidebar-context'
+import { useNotes } from '@/contexts/note-context'
 import { cn } from '@/lib/utils'
+import { NoteService } from '@/services/note-service'
 
 interface Message {
   id: string
@@ -13,23 +15,82 @@ interface Message {
   timestamp: Date
 }
 
+// Access the enhanced window.api
+declare global {
+  interface Window {
+    api: {
+      notes: {
+        getAll: () => Promise<any[]>
+        get: (id: string) => Promise<any>
+        create: (noteData: any) => Promise<any>
+        update: (id: string, updates: any) => Promise<any>
+        delete: (id: string) => Promise<boolean>
+        getChatHistory: (noteId: string) => Promise<any[]>
+        addChatMessage: (noteId: string, message: any) => Promise<any>
+        clearChatHistory: (noteId: string) => Promise<any>
+      }
+      openai: {
+        improve: (text: string, range: any, apiKey: string) => Promise<string>
+        chat: (messages: any[], apiKey: string, noteId?: string) => Promise<any>
+        onChatChunk: (callback: (chunk: string) => void) => () => void
+        onChatDone: (callback: () => void) => () => void
+        onChatError: (callback: (error: string) => void) => () => void
+        interruptChat: () => void
+      }
+    }
+  }
+}
+
 const apiKey = import.meta.env.RENDERER_VITE_OPENAI_API_KEY || ''
+const noteService = new NoteService()
 
 export function ChatSidebar() {
   const { isOpen } = useChatSidebar()
+  const { currentNote } = useNotes()
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const [inputValue, setInputValue] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
-  const abortControllerRef = useRef<AbortController | null>(null)
+  const [noNoteSelected, setNoNoteSelected] = useState(false)
   const currentAiMessageIdRef = useRef<string | null>(null)
+
+  // Load chat history when the current note changes
+  useEffect(() => {
+    if (!currentNote) {
+      setNoNoteSelected(true)
+      setMessages([])
+      return
+    }
+
+    setNoNoteSelected(false)
+
+    const loadChatHistory = async () => {
+      try {
+        const chatHistory = await noteService.getChatHistory(currentNote.id)
+
+        // Convert the chat history to our Message format
+        const formattedMessages = chatHistory.map((msg) => ({
+          id: crypto.randomUUID(),
+          content: msg.content,
+          sender: msg.role === 'user' ? 'user' : ('ai' as 'user' | 'ai'),
+          timestamp: new Date(msg.timestamp)
+        }))
+
+        setMessages(formattedMessages)
+      } catch (error) {
+        console.error('Error loading chat history:', error)
+      }
+    }
+
+    loadChatHistory()
+  }, [currentNote])
 
   useEffect(() => {
     // Set up IPC listeners for chat streaming
-    const handleChatChunk = (_: any, chunk: string) => {
+    const removeChunkListener = window.api.openai.onChatChunk((chunk) => {
       if (!currentAiMessageIdRef.current) return
 
-      console.log('Recieved chunk:', chunk)
+      console.log('Received chunk:', chunk)
 
       const lines = chunk.split('\n').filter((line) => line.trim() !== '')
 
@@ -43,7 +104,6 @@ export function ChatSidebar() {
             const parsed = JSON.parse(data)
             const content = parsed.choices[0]?.delta?.content || ''
             if (content) {
-              // console.log('Recieved content:', content)
               setMessages((messages) =>
                 messages.map((msg) =>
                   msg.id === currentAiMessageIdRef.current
@@ -57,14 +117,14 @@ export function ChatSidebar() {
           }
         }
       }
-    }
+    })
 
-    const handleChatDone = () => {
+    const removeDoneListener = window.api.openai.onChatDone(() => {
       setIsStreaming(false)
       currentAiMessageIdRef.current = null
-    }
+    })
 
-    const handleChatError = (_: any, errorMessage: string) => {
+    const removeErrorListener = window.api.openai.onChatError((errorMessage) => {
       if (currentAiMessageIdRef.current) {
         setMessages((messages) =>
           messages.map((msg) =>
@@ -76,23 +136,13 @@ export function ChatSidebar() {
       }
       setIsStreaming(false)
       currentAiMessageIdRef.current = null
-    }
-
-    // Clean up previous listeners before adding new ones
-    window.electron.ipcRenderer.removeAllListeners('openai:chat-chunk')
-    window.electron.ipcRenderer.removeAllListeners('openai:chat-done')
-    window.electron.ipcRenderer.removeAllListeners('openai:chat-error')
-
-    // Add event listeners
-    window.electron.ipcRenderer.on('openai:chat-chunk', handleChatChunk)
-    window.electron.ipcRenderer.on('openai:chat-done', handleChatDone)
-    window.electron.ipcRenderer.on('openai:chat-error', handleChatError)
+    })
 
     // Clean up listeners
     return () => {
-      window.electron.ipcRenderer.removeListener('openai:chat-chunk', handleChatChunk)
-      window.electron.ipcRenderer.removeListener('openai:chat-done', handleChatDone)
-      window.electron.ipcRenderer.removeListener('openai:chat-error', handleChatError)
+      removeChunkListener()
+      removeDoneListener()
+      removeErrorListener()
     }
   }, [])
 
@@ -110,7 +160,7 @@ export function ChatSidebar() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inputValue.trim() || isStreaming) return
+    if (!inputValue.trim() || isStreaming || !currentNote) return
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -152,7 +202,8 @@ export function ChatSidebar() {
       ]
 
       // Use IPC to communicate with OpenAI through main process
-      await window.api.openai.chat(apiMessages, apiKey)
+      // Pass the current note ID
+      await window.api.openai.chat(apiMessages, apiKey, currentNote.id)
     } catch (error) {
       console.error('Error in chat:', error)
       setMessages((messages) =>
@@ -170,13 +221,20 @@ export function ChatSidebar() {
   const handleInterrupt = () => {
     setIsStreaming(false)
     currentAiMessageIdRef.current = null
-    window.electron.ipcRenderer.send('openai:chat-interrupt')
+    window.api.openai.interruptChat()
   }
 
-  const handleClearChat = () => {
-    setMessages([])
-    if (isStreaming) {
-      handleInterrupt()
+  const handleClearChat = async () => {
+    if (!currentNote) return
+
+    try {
+      await noteService.clearChatHistory(currentNote.id)
+      setMessages([])
+      if (isStreaming) {
+        handleInterrupt()
+      }
+    } catch (error) {
+      console.error('Error clearing chat history:', error)
     }
   }
 
@@ -196,6 +254,7 @@ export function ChatSidebar() {
             onClick={handleClearChat}
             className="h-8 w-8"
             title="Clear chat"
+            disabled={!currentNote}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -203,33 +262,45 @@ export function ChatSidebar() {
 
         <div className="flex flex-col h-full">
           <ScrollArea ref={scrollAreaRef} className="flex-1 p-4 pb-16 mb-16 h-full">
-            {messages.map((message) => (
-              <div key={message.id} className="mb-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-xs font-medium">{message.sender === 'ai' ? 'Blot' : 'You'}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {message.timestamp.toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </p>
-                </div>
-                <div
-                  className={`rounded-lg px-3 py-2 ${
-                    message.sender === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                  }`}
-                >
-                  <p className="text-sm">
-                    {message.content ||
-                      (message.sender === 'ai' &&
-                      isStreaming &&
-                      message.id === currentAiMessageIdRef.current
-                        ? 'Thinking...'
-                        : '')}
-                  </p>
-                </div>
+            {noNoteSelected ? (
+              <div className="flex items-center justify-center h-full text-center">
+                <p className="text-muted-foreground">Select a note to start chatting</p>
               </div>
-            ))}
+            ) : messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-center">
+                <p className="text-muted-foreground">Send a message to start chatting</p>
+              </div>
+            ) : (
+              messages.map((message) => (
+                <div key={message.id} className="mb-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-xs font-medium">
+                      {message.sender === 'ai' ? 'Blot' : 'You'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {message.timestamp.toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  </div>
+                  <div
+                    className={`rounded-lg px-3 py-2 ${
+                      message.sender === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                    }`}
+                  >
+                    <p className="text-sm">
+                      {message.content ||
+                        (message.sender === 'ai' &&
+                        isStreaming &&
+                        message.id === currentAiMessageIdRef.current
+                          ? 'Thinking...'
+                          : '')}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
           </ScrollArea>
         </div>
 
@@ -243,20 +314,25 @@ export function ChatSidebar() {
               onChange={(e) => setInputValue(e.target.value)}
               placeholder="Type your message..."
               className="flex-1"
-              disabled={isStreaming}
+              disabled={isStreaming || noNoteSelected}
             />
             {isStreaming ? (
               <Button
                 type="button"
                 onClick={handleInterrupt}
-                variant="destructive"
+                variant="outline"
                 size="icon"
                 title="Stop generating"
               >
                 <StopCircle className="h-4 w-4" />
               </Button>
             ) : (
-              <Button type="submit" size="icon" disabled={!inputValue.trim()}>
+              <Button
+                type="submit"
+                size="icon"
+                disabled={!inputValue.trim() || noNoteSelected}
+                title="Send message"
+              >
                 <Send className="h-4 w-4" />
               </Button>
             )}

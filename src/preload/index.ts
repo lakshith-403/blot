@@ -12,13 +12,33 @@ const api = {
       ipcRenderer.invoke('notes:create', noteData),
     update: (id: string, updates: { title?: string; content?: any }) =>
       ipcRenderer.invoke('notes:update', id, updates),
-    delete: (id: string) => ipcRenderer.invoke('notes:delete', id)
+    delete: (id: string) => ipcRenderer.invoke('notes:delete', id),
+    getChatHistory: (noteId: string) => ipcRenderer.invoke('notes:getChatHistory', noteId),
+    addChatMessage: (noteId: string, message: { role: string; content: string }) =>
+      ipcRenderer.invoke('notes:addChatMessage', noteId, message),
+    clearChatHistory: (noteId: string) => ipcRenderer.invoke('notes:clearChatHistory', noteId)
   },
   openai: {
     improve: (text: string, range: [number, number], apiKey: string) =>
       ipcRenderer.invoke('openai:improve', text, range, apiKey),
-    chat: (messages: Array<{ role: string; content: string }>, apiKey: string) =>
-      ipcRenderer.invoke('openai:chat', messages, apiKey)
+    chat: (messages: Array<{ role: string; content: string }>, apiKey: string, noteId?: string) =>
+      ipcRenderer.invoke('openai:chat', messages, apiKey, noteId),
+    onChatChunk: (callback: (chunk: string) => void) => {
+      const listener = (_: any, chunk: string) => callback(chunk)
+      ipcRenderer.on('openai:chat-chunk', listener)
+      return () => ipcRenderer.removeListener('openai:chat-chunk', listener)
+    },
+    onChatDone: (callback: () => void) => {
+      const listener = () => callback()
+      ipcRenderer.on('openai:chat-done', listener)
+      return () => ipcRenderer.removeListener('openai:chat-done', listener)
+    },
+    onChatError: (callback: (error: string) => void) => {
+      const listener = (_: any, error: string) => callback(error)
+      ipcRenderer.on('openai:chat-error', listener)
+      return () => ipcRenderer.removeListener('openai:chat-error', listener)
+    },
+    interruptChat: () => ipcRenderer.send('openai:chat-interrupt')
   }
 }
 

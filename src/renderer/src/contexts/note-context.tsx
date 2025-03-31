@@ -21,6 +21,8 @@ interface NoteContextType {
   forceSave: () => Promise<void>
   deleteNote: (id: string) => Promise<void>
   setCurrentNote: (note: Note | null) => void
+  getChatHistory: (noteId: string) => Promise<any[]>
+  clearChatHistory: (noteId: string) => Promise<void>
 }
 
 const NoteContext = createContext<NoteContextType | undefined>(undefined)
@@ -249,6 +251,29 @@ export const NoteProvider = ({ children }: NoteProviderProps) => {
     }
   }, [currentNote])
 
+  const getChatHistory = async (noteId: string) => {
+    console.log('Getting chat history for note:', noteId)
+    try {
+      const history = await noteService.getChatHistory(noteId)
+      console.log('Loaded chat history:', history)
+      return history
+    } catch (error) {
+      console.error(`Error getting chat history for note ${noteId}:`, error)
+      throw error
+    }
+  }
+
+  const clearChatHistory = async (noteId: string) => {
+    console.log('Clearing chat history for note:', noteId)
+    try {
+      await noteService.clearChatHistory(noteId)
+      console.log('Chat history cleared for note:', noteId)
+    } catch (error) {
+      console.error(`Error clearing chat history for note ${noteId}:`, error)
+      throw error
+    }
+  }
+
   const value = {
     notes,
     currentNote,
@@ -260,7 +285,9 @@ export const NoteProvider = ({ children }: NoteProviderProps) => {
     updateNoteCache,
     forceSave,
     deleteNote,
-    setCurrentNote
+    setCurrentNote,
+    getChatHistory,
+    clearChatHistory
   }
 
   return <NoteContext.Provider value={value}>{children}</NoteContext.Provider>

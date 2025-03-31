@@ -7,6 +7,11 @@ export interface Note {
   content: any
   createdAt: string
   updatedAt: string
+  chatHistory?: Array<{
+    role: string
+    content: string
+    timestamp: string
+  }>
 }
 
 /**
@@ -127,6 +132,75 @@ export class NoteService {
       console.log('Note deleted')
     } catch (error) {
       console.error(`Error deleting note ${id}:`, error)
+      throw error
+    }
+  }
+
+  /**
+   * Get chat history for a note
+   * @param noteId Note ID
+   * @returns Promise containing the chat history array
+   */
+  async getChatHistory(
+    noteId: string
+  ): Promise<Array<{ role: string; content: string; timestamp: string }>> {
+    console.log('NoteService.getChatHistory called for note', noteId)
+    try {
+      if (!window.api?.notes?.getChatHistory) {
+        console.error('window.api.notes.getChatHistory is not available')
+        return []
+      }
+
+      const chatHistory = await window.api.notes.getChatHistory(noteId)
+      console.log('Chat history retrieved:', chatHistory)
+      return chatHistory
+    } catch (error) {
+      console.error(`Error getting chat history for note ${noteId}:`, error)
+      return []
+    }
+  }
+
+  /**
+   * Add a chat message to a note
+   * @param noteId Note ID
+   * @param message Message object with role and content
+   * @returns Promise containing the updated note
+   */
+  async addChatMessage(noteId: string, message: { role: string; content: string }): Promise<Note> {
+    console.log('NoteService.addChatMessage called', noteId, message)
+    try {
+      if (!window.api?.notes?.addChatMessage) {
+        console.error('window.api.notes.addChatMessage is not available')
+        throw new Error('API not available')
+      }
+
+      const updatedNote = await window.api.notes.addChatMessage(noteId, message)
+      console.log('Chat message added:', updatedNote)
+      return updatedNote
+    } catch (error) {
+      console.error(`Error adding chat message to note ${noteId}:`, error)
+      throw error
+    }
+  }
+
+  /**
+   * Clear chat history for a note
+   * @param noteId Note ID
+   * @returns Promise containing the updated note
+   */
+  async clearChatHistory(noteId: string): Promise<Note> {
+    console.log('NoteService.clearChatHistory called for note', noteId)
+    try {
+      if (!window.api?.notes?.clearChatHistory) {
+        console.error('window.api.notes.clearChatHistory is not available')
+        throw new Error('API not available')
+      }
+
+      const updatedNote = await window.api.notes.clearChatHistory(noteId)
+      console.log('Chat history cleared:', updatedNote)
+      return updatedNote
+    } catch (error) {
+      console.error(`Error clearing chat history for note ${noteId}:`, error)
       throw error
     }
   }

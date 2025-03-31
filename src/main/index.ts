@@ -17,6 +17,34 @@ async function ensureNotesDirExists(): Promise<void> {
   }
 }
 
+// Ensure all notes have the required fields
+async function migrateExistingNotes(): Promise<void> {
+  try {
+    const files = await fs.readdir(notesDir)
+
+    for (const file of files) {
+      if (file.endsWith('.json')) {
+        const filePath = path.join(notesDir, file)
+        try {
+          const data = await fs.readFile(filePath, 'utf-8')
+          const note = JSON.parse(data)
+
+          // Add chatHistory if it doesn't exist
+          if (!note.chatHistory) {
+            note.chatHistory = []
+            await fs.writeFile(filePath, JSON.stringify(note, null, 2), 'utf-8')
+            console.log(`Added chatHistory to note ${note.id}`)
+          }
+        } catch (error) {
+          console.error(`Error migrating note ${file}:`, error)
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error migrating notes:', error)
+  }
+}
+
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -70,6 +98,8 @@ app.whenReady().then(() => {
 
   notesDir = path.join(app.getPath('userData'), 'notes')
   ensureNotesDirExists()
+    .then(() => migrateExistingNotes())
+    .catch((error) => console.error('Error during initialization:', error))
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
@@ -102,6 +132,11 @@ function setupNotesIPC() {
         content: any
         createdAt: string
         updatedAt: string
+        chatHistory?: Array<{
+          role: string
+          content: string
+          timestamp: string
+        }>
       }> = []
 
       for (const file of files) {
@@ -148,7 +183,8 @@ function setupNotesIPC() {
           typeof noteData.title === 'object' ? 'Untitled Note' : noteData.title || 'Untitled Note',
         content: noteData.content || '',
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
+        chatHistory: []
       }
 
       const filePath = path.join(notesDir, `${id}.json`)
@@ -172,7 +208,8 @@ function setupNotesIPC() {
         ...note,
         ...(updates && {
           title: typeof updates.title === 'object' ? note.title : updates.title || note.title,
-          content: updates.content || note.content
+          content: updates.content || note.content,
+          chatHistory: updates.chatHistory || note.chatHistory || []
         }),
         updatedAt: new Date().toISOString()
       }
@@ -198,10 +235,94 @@ function setupNotesIPC() {
     }
   })
 
+  // Add chat message to note
+  ipcMain.handle('notes:addChatMessage', async (_, noteId, message) => {
+    try {
+      if (!noteId) {
+        throw new Error('Note ID is required')
+      }
+
+      const filePath = path.join(notesDir, `${noteId}.json`)
+      const data = await fs.readFile(filePath, 'utf-8')
+      const note = JSON.parse(data)
+
+      // Initialize chatHistory if it doesn't exist
+      if (!note.chatHistory) {
+        note.chatHistory = []
+      }
+
+      // Add timestamp to the message
+      const newMessage = {
+        ...message,
+        timestamp: new Date().toISOString()
+      }
+
+      // Add message to chat history
+      note.chatHistory.push(newMessage)
+      note.updatedAt = new Date().toISOString()
+
+      await fs.writeFile(filePath, JSON.stringify(note, null, 2), 'utf-8')
+
+      return note
+    } catch (error) {
+      console.error(`Error adding chat message to note ${noteId}:`, error)
+      throw error
+    }
+  })
+
+  // Clear chat history for a note
+  ipcMain.handle('notes:clearChatHistory', async (_, noteId) => {
+    try {
+      if (!noteId) {
+        throw new Error('Note ID is required')
+      }
+
+      const filePath = path.join(notesDir, `${noteId}.json`)
+      const data = await fs.readFile(filePath, 'utf-8')
+      const note = JSON.parse(data)
+
+      note.chatHistory = []
+      note.updatedAt = new Date().toISOString()
+
+      await fs.writeFile(filePath, JSON.stringify(note, null, 2), 'utf-8')
+
+      return note
+    } catch (error) {
+      console.error(`Error clearing chat history for note ${noteId}:`, error)
+      throw error
+    }
+  })
+
+  // Get chat history for a note
+  ipcMain.handle('notes:getChatHistory', async (_, noteId) => {
+    try {
+      if (!noteId) {
+        throw new Error('Note ID is required')
+      }
+
+      const filePath = path.join(notesDir, `${noteId}.json`)
+      const data = await fs.readFile(filePath, 'utf-8')
+      const note = JSON.parse(data)
+
+      return note.chatHistory || []
+    } catch (error) {
+      console.error(`Error getting chat history for note ${noteId}:`, error)
+      return []
+    }
+  })
+
   // Handle OpenAI chat API requests with streaming
-  ipcMain.handle('openai:chat', async (event, messages, apiKey) => {
+  ipcMain.handle('openai:chat', async (event, messages, apiKey, noteId) => {
     try {
       console.log('Making OpenAI Chat API request from main process')
+
+      // Save user message to chat history if noteId is provided
+      if (noteId) {
+        const userMessage = messages[messages.length - 1]
+        if (userMessage && userMessage.role === 'user') {
+          await saveMessageToNote(noteId, userMessage)
+        }
+      }
 
       const openai = new OpenAI({
         apiKey: apiKey
@@ -214,6 +335,12 @@ function setupNotesIPC() {
         aborted = true
       }
       ipcMain.once('openai:chat-interrupt', interruptHandler)
+
+      // For storing assistant response
+      let assistantMessage = {
+        role: 'assistant',
+        content: ''
+      }
 
       try {
         const stream = await openai.chat.completions.create({
@@ -230,6 +357,9 @@ function setupNotesIPC() {
 
           const content = chunk.choices[0]?.delta?.content || ''
           if (content) {
+            // Add content to assistant message
+            assistantMessage.content += content
+
             // Format the chunk as expected by the renderer
             const formattedChunk = `data: ${JSON.stringify({
               choices: [{ delta: { content } }]
@@ -237,6 +367,11 @@ function setupNotesIPC() {
 
             event.sender.send('openai:chat-chunk', formattedChunk)
           }
+        }
+
+        // Save assistant message to chat history if noteId is provided and not aborted
+        if (noteId && !aborted && assistantMessage.content) {
+          await saveMessageToNote(noteId, assistantMessage)
         }
 
         event.sender.send('openai:chat-done')
@@ -254,6 +389,31 @@ function setupNotesIPC() {
       throw error
     }
   })
+
+  // Helper function to save a message to a note's chat history
+  async function saveMessageToNote(noteId: string, message: { role: string; content: string }) {
+    try {
+      const filePath = path.join(notesDir, `${noteId}.json`)
+      const data = await fs.readFile(filePath, 'utf-8')
+      const note = JSON.parse(data)
+
+      // Initialize chatHistory if it doesn't exist
+      if (!note.chatHistory) {
+        note.chatHistory = []
+      }
+
+      // Add message to chat history with timestamp
+      note.chatHistory.push({
+        ...message,
+        timestamp: new Date().toISOString()
+      })
+
+      note.updatedAt = new Date().toISOString()
+      await fs.writeFile(filePath, JSON.stringify(note, null, 2), 'utf-8')
+    } catch (error) {
+      console.error(`Error saving message to note ${noteId}:`, error)
+    }
+  }
 
   // Handle OpenAI API requests for improving text
   ipcMain.handle('openai:improve', async (_, text, r, apiKey) => {

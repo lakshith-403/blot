@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useChatSidebar } from '@/contexts/chat-sidebar-context'
+import { cn } from '@/lib/utils'
 
 interface Message {
   id: string
@@ -77,17 +78,20 @@ export function ChatSidebar() {
     }, 1000)
   }
 
-  if (!isOpen) return null
-
   return (
-    <div className="fixed top-0 right-0 z-10 h-svh w-64 border-l border-border bg-sidebar flex flex-col">
+    <div
+      className={cn(
+        'fixed right-0 top-0 h-svh border-l border-border bg-sidebar flex flex-col transition-all duration-300 z-50',
+        isOpen ? 'opacity-100 w-64' : 'opacity-0 w-0 overflow-hidden'
+      )}
+    >
       <div className="flex-1 flex flex-col h-full">
         <div className="flex items-center justify-between px-4 py-2 border-b border-border">
           <h3 className="text-sm font-medium">Chat Assistant</h3>
         </div>
 
         <div className="flex flex-col h-full">
-          <ScrollArea ref={scrollAreaRef} className="flex-1 p-4 h-full">
+          <ScrollArea ref={scrollAreaRef} className="flex-1 p-4 pb-16 h-full">
             {messages.map((message) => (
               <div key={message.id} className="mb-4">
                 <div className="flex items-center gap-2 mb-1">

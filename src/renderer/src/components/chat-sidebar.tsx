@@ -91,7 +91,7 @@ export function ChatSidebar() {
         </div>
 
         <div className="flex flex-col h-full">
-          <ScrollArea ref={scrollAreaRef} className="flex-1 p-4 pb-16 h-full">
+          <ScrollArea ref={scrollAreaRef} className="flex-1 p-4 pb-16 mb-16 h-full">
             {messages.map((message) => (
               <div key={message.id} className="mb-4">
                 <div className="flex items-center gap-2 mb-1">

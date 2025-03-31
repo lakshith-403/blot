@@ -16,7 +16,7 @@ function AppContent() {
       <AppSidebar />
       <main
         className={cn(
-          'h-full flex-1 flex flex-col min-w-0 transition-all duration-300',
+          'h-full flex-1 flex flex-col min-w-0 transition-all duration-300 h-screen',
           isOpen && 'pr-64'
         )}
       >

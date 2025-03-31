@@ -324,7 +324,7 @@ const Editor = forwardRef<Quill, EditorProps>(
         {!readOnly && (
           <TooltipProvider>
             <div className="flex items-center sticky top-0 z-10 bg-background flex gap-1 p-2 border-b flex-wrap justify-between">
-              <div className="flex gap-1 flex-1 flex-wrap">
+              <div className="flex gap-1 flex-1 flex-wrap max-h-fit">
                 <div className="flex gap-1">
                   <Tooltip>
                     <TooltipTrigger asChild>

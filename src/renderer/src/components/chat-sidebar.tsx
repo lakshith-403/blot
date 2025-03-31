@@ -90,8 +90,6 @@ export function ChatSidebar() {
     const removeChunkListener = window.api.openai.onChatChunk((chunk) => {
       if (!currentAiMessageIdRef.current) return
 
-      console.log('Received chunk:', chunk)
-
       const lines = chunk.split('\n').filter((line) => line.trim() !== '')
 
       for (const line of lines) {
@@ -188,11 +186,54 @@ export function ChatSidebar() {
     try {
       setIsStreaming(true)
 
-      // Prepare messages for API
+      // Extract note content from the ops array
+      let noteContent = ''
+      if (currentNote && currentNote.content && Array.isArray(currentNote.content.ops)) {
+        // Extract text from each insert operation
+        noteContent = currentNote.content.ops
+          .filter((op) => op && typeof op.insert === 'string')
+          .map((op) => op.insert)
+          .join('')
+
+        // Optionally truncate very large notes
+        const MAX_NOTE_LENGTH = 10000 // Adjust based on your token limit needs
+        if (noteContent.length > MAX_NOTE_LENGTH) {
+          noteContent =
+            noteContent.substring(0, MAX_NOTE_LENGTH) + '... [Note truncated due to length]'
+        }
+      } else {
+        noteContent = '[Note content unavailable]'
+      }
+
+      // Enhance the prompt with metadata if available
+      let noteMeta = ''
+      if (currentNote.title) {
+        noteMeta += `Title: ${currentNote.title}\n`
+      }
+      if (currentNote.createdAt) {
+        noteMeta += `Created: ${new Date(currentNote.createdAt).toLocaleString()}\n`
+      }
+      if (currentNote.updatedAt) {
+        noteMeta += `Last Updated: ${new Date(currentNote.updatedAt).toLocaleString()}\n`
+      }
+
+      // Prepare messages for API with note content in system prompt
+      const systemPrompt = `You are a helpful assistant for a note-taking app called Blot.
+You have access to the following note:
+
+--- NOTE METADATA ---
+${noteMeta}
+
+--- NOTE CONTENT ---
+${noteContent}
+-------------------
+
+Please use this information to provide accurate and relevant responses.`
+
       const apiMessages = [
         {
           role: 'system',
-          content: 'You are a helpful assistant for a note-taking app called Blot.'
+          content: systemPrompt
         },
         ...messages.map((msg) => ({
           role: msg.sender === 'user' ? 'user' : 'assistant',
@@ -202,7 +243,6 @@ export function ChatSidebar() {
       ]
 
       // Use IPC to communicate with OpenAI through main process
-      // Pass the current note ID
       await window.api.openai.chat(apiMessages, apiKey, currentNote.id)
     } catch (error) {
       console.error('Error in chat:', error)
@@ -247,7 +287,7 @@ export function ChatSidebar() {
     >
       <div className="flex-1 flex flex-col h-full">
         <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-          <h3 className="text-sm font-medium">Chat Assistant</h3>
+          <h3 className="text-sm font-medium">Chat with Blot</h3>
           <Button
             variant="ghost"
             size="icon"
@@ -268,7 +308,7 @@ export function ChatSidebar() {
               </div>
             ) : messages.length === 0 ? (
               <div className="flex items-center justify-center h-full text-center">
-                <p className="text-muted-foreground">Send a message to start chatting</p>
+                <p className="text-muted-foreground">hehe</p>
               </div>
             ) : (
               messages.map((message) => (

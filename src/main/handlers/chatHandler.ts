@@ -211,10 +211,11 @@ export function setupChatIPC() {
 
       const roundedText = text.substring(range[0], range[1])
       const roundedTextWithDelimiter = `~~${roundedText}~~`
-      console.log('Rounded text:', roundedText)
-      console.log('Rounded text with delimiter:', roundedTextWithDelimiter)
-      const markedText = text.slice(0, range[0]) + roundedTextWithDelimiter + text.slice(range[1])
-      console.log('Marked text:', markedText)
+      let markedText = text.slice(0, range[0]) + roundedTextWithDelimiter + text.slice(range[1])
+      // Only keep 200 char to both sides in the marked text
+      const markedTextStart = Math.max(0, range[0] - 200)
+      const markedTextEnd = Math.min(markedText.length, range[1] + 200)
+      markedText = markedText.substring(markedTextStart, markedTextEnd)
 
       const openai = new OpenAI({
         apiKey: apiKey
@@ -225,35 +226,49 @@ export function setupChatIPC() {
         messages: [
           {
             role: 'system',
-            content: `
-              You are a helpful assistant that improves text. Fix typos, mistakes, grammar, and make it more clear.
-              Keep your changes to a minimum. Focus is on fixing mistakes, not adding new content.
-              You're given the entire text and a portion sorrounded with ~~ that you need to improve.
-              do not change anything outside of the portion sorrounded with ~~
-              Even if the marked portion ends in the middle of a word, only output characters from the marked portion.
-              Output ONLY the improved text. That means you should not include the original text or any other text outside of the portion sorrounded with ~~
+            content: `You are a helpful assistant for a note-taking app called Blot.
+            You are a professional writing assistant trained to help users improve their writing while preserving their original voice and intent. Your job is to:
+	•	Enhance clarity, grammar, flow, and structure.
+	•	Suggest alternatives for weak or awkward phrasing.
+	•	Maintain the user’s tone, style, and purpose unless otherwise instructed.
+	•	Be concise, constructive, and respectful in all suggestions.
+	•	Offer explanations when asked, but do not overwhelm the user with technical grammar unless requested.
+	•	Support multiple writing types (e.g. essays, fiction, emails, blog posts, academic writing, etc.) and adapt accordingly.
 
-              e.g.:
-              Original text:
-              Hello Where can i find t~~he restura~~nt?
-              Marked text: 
-              Hello Where can i find t~~he restura~~nt?
-              Output text:
-              he restaura
+Do not generate full rewrites unless specifically asked. 
+Focus on improving what’s provided. 
+If the user asks for tone-specific help 
+(e.g., make it sound more formal, more persuasive, or more friendly), follow that instruction precisely.
+Keep your changes to a minimum.
 
-              Response should only contain the improved text. In this example the response should be:
-              he restaurant
+You have access to the following note:
 
-              DO NOT say anything else than the improved text.
-              `
+--- NOTE CONTENT ---
+${text}
+-------------------
+
+Please use this information to provide accurate and relevant responses.`
           },
           {
             role: 'user',
-            content: `Orignal text:\n ${text} \n\n Improve this portion:\n ${markedText}`
+            content: `I need to improve the following part of the text. Text to be improved is marked with ~~ in either sides.
+              Please only output the improved text. Even if the marked portion ends in the middle of a word, only output characters from the marked portion.
+              Output ONLY the improved text. That means you should not include the original text or any other text outside of the portion sorrounded with ~~
+              
+              e.g.
+              Marked text: 
+              Hello Where can i find t~~he resturae~~nt?
+              Output text:
+              he restaura
+              
+              Here is a portion of the text containing the portion to be improved:
+              ${markedText}
+
+            `
           }
         ],
         temperature: 0.7,
-        max_tokens: 1000
+        max_tokens: 5000
       })
 
       return completion.choices[0]?.message?.content || ''

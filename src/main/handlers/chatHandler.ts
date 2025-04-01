@@ -204,7 +204,7 @@ export function setupChatIPC() {
   })
 
   // Handle OpenAI API requests for improving text
-  ipcMain.handle('openai:improve', async (_, text, r, apiKey) => {
+  ipcMain.handle('openai:improve', async (_, text, r, apiKey, customInstruction) => {
     try {
       console.log('Making OpenAI API request from main process')
       const range = [r['index'], r['index'] + r['length']]
@@ -221,6 +221,33 @@ export function setupChatIPC() {
         apiKey: apiKey
       })
 
+      // Define user instruction based on whether a custom instruction was provided
+      const userInstruction = customInstruction
+        ? `I need to improve the following part of the text based on this instruction: "${customInstruction}". Text to be improved is marked with ~~ in either sides.
+            Please only output the improved text. Even if the marked portion ends in the middle of a word, only output characters from the marked portion.
+            Output ONLY the improved text. That means you should not include the original text or any other text outside of the portion sorrounded with ~~
+            
+            e.g.
+            Marked text: 
+            Hello Where can i find t~~he resturae~~nt?
+            Output text:
+            he restaura
+            
+            Here is a portion of the text containing the portion to be improved:
+            ${markedText}`
+        : `I need to improve the following part of the text. Text to be improved is marked with ~~ in either sides.
+            Please only output the improved text. Even if the marked portion ends in the middle of a word, only output characters from the marked portion.
+            Output ONLY the improved text. That means you should not include the original text or any other text outside of the portion sorrounded with ~~
+            
+            e.g.
+            Marked text: 
+            Hello Where can i find t~~he resturae~~nt?
+            Output text:
+            he restaura
+            
+            Here is a portion of the text containing the portion to be improved:
+            ${markedText}`
+
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [
@@ -230,13 +257,13 @@ export function setupChatIPC() {
             You are a professional writing assistant trained to help users improve their writing while preserving their original voice and intent. Your job is to:
 	•	Enhance clarity, grammar, flow, and structure.
 	•	Suggest alternatives for weak or awkward phrasing.
-	•	Maintain the user’s tone, style, and purpose unless otherwise instructed.
+	•	Maintain the user's tone, style, and purpose unless otherwise instructed.
 	•	Be concise, constructive, and respectful in all suggestions.
 	•	Offer explanations when asked, but do not overwhelm the user with technical grammar unless requested.
 	•	Support multiple writing types (e.g. essays, fiction, emails, blog posts, academic writing, etc.) and adapt accordingly.
 
 Do not generate full rewrites unless specifically asked. 
-Focus on improving what’s provided. 
+Focus on improving what's provided. 
 If the user asks for tone-specific help 
 (e.g., make it sound more formal, more persuasive, or more friendly), follow that instruction precisely.
 Keep your changes to a minimum.
@@ -251,20 +278,7 @@ Please use this information to provide accurate and relevant responses.`
           },
           {
             role: 'user',
-            content: `I need to improve the following part of the text. Text to be improved is marked with ~~ in either sides.
-              Please only output the improved text. Even if the marked portion ends in the middle of a word, only output characters from the marked portion.
-              Output ONLY the improved text. That means you should not include the original text or any other text outside of the portion sorrounded with ~~
-              
-              e.g.
-              Marked text: 
-              Hello Where can i find t~~he resturae~~nt?
-              Output text:
-              he restaura
-              
-              Here is a portion of the text containing the portion to be improved:
-              ${markedText}
-
-            `
+            content: userInstruction
           }
         ],
         temperature: 0.7,

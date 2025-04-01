@@ -19,8 +19,8 @@ const api = {
     clearChatHistory: (noteId: string) => ipcRenderer.invoke('notes:clearChatHistory', noteId)
   },
   openai: {
-    improve: (text: string, range: [number, number], apiKey: string) =>
-      ipcRenderer.invoke('openai:improve', text, range, apiKey),
+    improve: (text: string, range: [number, number], apiKey: string, customInstruction?: string) =>
+      ipcRenderer.invoke('openai:improve', text, range, apiKey, customInstruction),
     chat: (messages: Array<{ role: string; content: string }>, apiKey: string, noteId?: string) =>
       ipcRenderer.invoke('openai:chat', messages, apiKey, noteId),
     onChatChunk: (callback: (chunk: string) => void) => {

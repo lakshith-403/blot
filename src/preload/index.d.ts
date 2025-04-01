@@ -27,7 +27,12 @@ export interface NotesAPI {
 }
 
 export interface OpenAIAPI {
-  improve: (text: string, range: [number, number], apiKey: string) => Promise<string>
+  improve: (
+    text: string,
+    range: [number, number],
+    apiKey: string,
+    customInstruction?: string
+  ) => Promise<string>
   chat: (
     messages: Array<{ role: string; content: string }>,
     apiKey: string,

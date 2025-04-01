@@ -20,6 +20,15 @@ import {
   DrawerHeader,
   DrawerTitle
 } from '@/components/ui/drawer'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 
 // Icons for toolbar buttons
 import {
@@ -33,7 +42,8 @@ import {
   AlignCenter,
   AlignRight,
   Wand2,
-  Loader2
+  Loader2,
+  MessageSquare
 } from 'lucide-react'
 
 interface EditorProps {
@@ -93,6 +103,11 @@ const Editor = forwardRef<Quill, EditorProps>(
     const [showDiffDrawer, setShowDiffDrawer] = useState(false)
     const [originalText, setOriginalText] = useState('')
     const [improvedText, setImprovedText] = useState('')
+
+    // New state for custom instruction dialog
+    const [showCustomDialog, setShowCustomDialog] = useState(false)
+    const [customInstruction, setCustomInstruction] = useState('')
+    const [lastSelection, setLastSelection] = useState<any>(null) // on dialog open, selection disappears, so we need to store the last selection
 
     // Create OpenAI client
     const apiKey = import.meta.env.RENDERER_VITE_OPENAI_API_KEY || ''
@@ -259,11 +274,63 @@ const Editor = forwardRef<Quill, EditorProps>(
       }
     }
 
+    const handleCustomImprove = async () => {
+      console.log('Custom instruction:', customInstruction)
+      console.log('Selection:', lastSelection)
+      if (lastSelection && customInstruction.trim()) {
+        try {
+          setIsImproving(true)
+          setShowCustomDialog(false)
+          setErrorMessage(null)
+
+          // Store original text
+          setOriginalText(lastSelection.text)
+
+          if (!apiKey) {
+            throw new Error(
+              'OpenAI API key is missing. Please set RENDERER_VITE_OPENAI_API_KEY in your .env file.'
+            )
+          }
+
+          console.log('Original text:', lastSelection.text)
+          console.log('Custom instruction:', customInstruction)
+
+          // Use the same IPC method with custom instruction
+          const improved = await window.api.openai.improve(
+            quillRef.current?.getText() || '',
+            lastSelection.range,
+            apiKey,
+            customInstruction // Pass the custom instruction
+          )
+          console.log('Improved text with custom instruction:', improved)
+
+          // Store improved text
+          setImprovedText(improved)
+
+          // Show the diff drawer
+          setShowDiffDrawer(true)
+        } catch (error) {
+          console.error('Error with custom improvement:', error)
+          setErrorMessage(
+            error instanceof Error ? error.message : 'An error occurred with custom improvement'
+          )
+        } finally {
+          setIsImproving(false)
+        }
+      }
+    }
+
     const handleAcceptImprovement = () => {
-      if (quillRef.current && selection && improvedText) {
+      if (quillRef.current && (selection || lastSelection) && improvedText) {
         // Replace the selected text with the improved version
-        quillRef.current.deleteText(selection.range.index, selection.range.length)
-        quillRef.current.insertText(selection.range.index, improvedText)
+        quillRef.current.deleteText(
+          selection?.range.index || lastSelection.range.index,
+          selection?.range.length || lastSelection.range.length
+        )
+        quillRef.current.insertText(
+          selection?.range.index || lastSelection.range.index,
+          improvedText
+        )
         setShowDiffDrawer(false)
       }
     }
@@ -532,6 +599,22 @@ const Editor = forwardRef<Quill, EditorProps>(
                     </>
                   )}
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 py-0 rounded-md text-xs"
+                  onClick={() => {
+                    setLastSelection(selection)
+                    setShowCustomDialog(true)
+                  }}
+                  disabled={isImproving || !apiKey}
+                  title={!apiKey ? 'API key is missing in .env file' : ''}
+                >
+                  <>
+                    <MessageSquare className="h-3 w-3 mr-1" />
+                    Custom
+                  </>
+                </Button>
               </div>
             </div>
           )}
@@ -581,6 +664,41 @@ const Editor = forwardRef<Quill, EditorProps>(
             </DrawerFooter>
           </DrawerContent>
         </Drawer>
+
+        {/* Custom Instructions Dialog */}
+        <Dialog open={showCustomDialog} onOpenChange={setShowCustomDialog}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Custom Improvement</DialogTitle>
+              <DialogDescription>
+                Enter a custom instruction for improving the selected text
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <Input
+                placeholder="Make it more formal, change to past tense, etc."
+                value={customInstruction}
+                onChange={(e) => setCustomInstruction(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={handleCustomImprove}
+                disabled={!customInstruction.trim() || isImproving}
+              >
+                {isImproving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  'Proceed'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     )
   }

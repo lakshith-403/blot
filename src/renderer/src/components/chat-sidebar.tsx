@@ -32,7 +32,12 @@ declare global {
         clearChatHistory: (noteId: string) => Promise<any>
       }
       openai: {
-        improve: (text: string, range: any, apiKey: string) => Promise<string>
+        improve: (
+          text: string,
+          range: any,
+          apiKey: string,
+          customInstruction?: string
+        ) => Promise<string>
         chat: (messages: any[], apiKey: string, noteId?: string) => Promise<any>
         onChatChunk: (callback: (chunk: string) => void) => () => void
         onChatDone: (callback: () => void) => () => void

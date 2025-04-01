@@ -17,7 +17,7 @@ function AppContent() {
       <main
         className={cn(
           'h-full flex-1 flex flex-col min-w-0 transition-all duration-300 h-screen',
-          isOpen && 'pr-64'
+          isOpen && 'pr-[30vw]'
         )}
       >
         <div className="flex gap-2 p-2">

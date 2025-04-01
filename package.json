@@ -41,6 +41,7 @@
     "openai": "^4.90.0",
     "quill": "2.0.3",
     "react-diff-viewer-continued": "^3.4.0",
+    "react-markdown": "^10.1.0",
     "tailwind-merge": "^2.5.4",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",

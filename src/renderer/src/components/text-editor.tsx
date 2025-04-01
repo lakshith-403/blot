@@ -2,7 +2,6 @@ import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Quill from 'quill'
 import 'quill/dist/quill.snow.css'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -11,8 +10,6 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import OpenAI from 'openai'
 import ReactDiffViewer from 'react-diff-viewer-continued'
 import {
   Drawer,

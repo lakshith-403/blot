@@ -1,4 +1,4 @@
-import { Send, X, StopCircle, Trash2 } from 'lucide-react'
+import { Send, StopCircle, Trash2 } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,6 +7,7 @@ import { useChatSidebar } from '@/contexts/chat-sidebar-context'
 import { useNotes } from '@/contexts/note-context'
 import { cn } from '@/lib/utils'
 import { NoteService } from '@/services/note-service'
+import ReactMarkdown from 'react-markdown'
 
 interface Message {
   id: string
@@ -295,6 +296,9 @@ Please use this information to provide accurate and relevant responses.`
         'fixed right-0 top-0 h-svh border-l border-border bg-sidebar flex flex-col transition-all duration-300 z-50',
         isOpen ? 'opacity-100 w-64' : 'opacity-0 w-0 overflow-hidden'
       )}
+      style={{
+        width: '30vw'
+      }}
     >
       <div className="flex-1 flex flex-col h-full">
         <div className="flex items-center justify-between px-4 py-2 border-b border-border">
@@ -323,7 +327,14 @@ Please use this information to provide accurate and relevant responses.`
               </div>
             ) : (
               messages.map((message) => (
-                <div key={message.id} className="mb-4">
+                <div
+                  key={message.id}
+                  className="mb-4"
+                  style={{
+                    width: '27vw',
+                    wordBreak: 'break-word'
+                  }}
+                >
                   <div className="flex items-center gap-2 mb-1">
                     <p className="text-xs font-medium">
                       {message.sender === 'ai' ? 'Blot' : 'You'}
@@ -336,18 +347,18 @@ Please use this information to provide accurate and relevant responses.`
                     </p>
                   </div>
                   <div
-                    className={`rounded-lg px-3 py-2 ${
+                    className={`rounded-lg px-3 py-2 text-sm ${
                       message.sender === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
                     }`}
                   >
-                    <p className="text-sm">
+                    <ReactMarkdown>
                       {message.content ||
                         (message.sender === 'ai' &&
                         isStreaming &&
                         message.id === currentAiMessageIdRef.current
                           ? 'Thinking...'
                           : '')}
-                    </p>
+                    </ReactMarkdown>
                   </div>
                 </div>
               ))

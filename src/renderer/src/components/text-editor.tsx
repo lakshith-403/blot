@@ -10,7 +10,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import ReactDiffViewer from 'react-diff-viewer-continued'
+import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued'
 import {
   Drawer,
   DrawerClose,
@@ -652,6 +652,7 @@ const Editor = forwardRef<Quill, EditorProps>(
                 useDarkTheme={false}
                 leftTitle="Original"
                 rightTitle="Improved"
+                compareMethod={DiffMethod.WORDS}
               />
             </div>
             <DrawerFooter className="flex-row justify-end gap-2">

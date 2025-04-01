@@ -1,4 +1,4 @@
-import { Send, StopCircle, Trash2 } from 'lucide-react'
+import { Maximize2, Send, StopCircle, Trash2 } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,6 +8,7 @@ import { useNotes } from '@/contexts/note-context'
 import { cn } from '@/lib/utils'
 import { NoteService } from '@/services/note-service'
 import ReactMarkdown from 'react-markdown'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 
 interface Message {
   id: string
@@ -49,11 +50,13 @@ export function ChatSidebar() {
   const { isOpen } = useChatSidebar()
   const { currentNote, getCachedContent } = useNotes()
   const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const fullscreenScrollAreaRef = useRef<HTMLDivElement>(null)
   const [inputValue, setInputValue] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [noNoteSelected, setNoNoteSelected] = useState(false)
   const currentAiMessageIdRef = useRef<string | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   // Load chat history when the current note changes
   useEffect(() => {
@@ -152,6 +155,16 @@ export function ChatSidebar() {
     // Scroll to bottom when messages change
     if (scrollAreaRef.current) {
       const scrollContainer = scrollAreaRef.current.querySelector(
+        '[data-radix-scroll-area-viewport]'
+      )
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight
+      }
+    }
+
+    // Also scroll fullscreen chat to bottom
+    if (fullscreenScrollAreaRef.current) {
+      const scrollContainer = fullscreenScrollAreaRef.current.querySelector(
         '[data-radix-scroll-area-viewport]'
       )
       if (scrollContainer) {
@@ -291,116 +304,224 @@ Please use this information to provide accurate and relevant responses.`
   }
 
   return (
-    <div
-      className={cn(
-        'fixed right-0 top-0 h-svh border-l border-border bg-sidebar flex flex-col transition-all duration-300 z-50',
-        isOpen ? 'opacity-100 w-64' : 'opacity-0 w-0 overflow-hidden'
-      )}
-      style={{
-        width: '30vw'
-      }}
-    >
-      <div className="flex-1 flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-          <h3 className="text-sm font-medium">Chat with Blot</h3>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleClearChat}
-            className="h-8 w-8"
-            title="Clear chat"
-            disabled={!currentNote}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <div className="flex flex-col h-full">
-          <ScrollArea ref={scrollAreaRef} className="flex-1 p-4 pb-16 mb-16 h-full">
-            {noNoteSelected ? (
-              <div className="flex items-center justify-center h-full text-center">
-                <p className="text-muted-foreground">Select a note to start chatting</p>
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-center">
-                <p className="text-muted-foreground">hehe</p>
-              </div>
-            ) : (
-              messages.map((message) => (
-                <div
-                  key={message.id}
-                  className="mb-4"
-                  style={{
-                    width: '27vw',
-                    wordBreak: 'break-word'
-                  }}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="text-xs font-medium">
-                      {message.sender === 'ai' ? 'Blot' : 'You'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {message.timestamp.toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </p>
-                  </div>
-                  <div
-                    className={`rounded-lg px-3 py-2 text-sm ${
-                      message.sender === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                    }`}
-                  >
-                    <ReactMarkdown>
-                      {message.content ||
-                        (message.sender === 'ai' &&
-                        isStreaming &&
-                        message.id === currentAiMessageIdRef.current
-                          ? 'Thinking...'
-                          : '')}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              ))
-            )}
-          </ScrollArea>
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="p-4 mt-auto border-t border-border sticky bottom-0 bg-sidebar"
-        >
-          <div className="flex gap-2">
-            <Input
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Type your message..."
-              className="flex-1"
-              disabled={isStreaming || noNoteSelected}
-            />
-            {isStreaming ? (
+    <>
+      <div
+        className={cn(
+          'fixed right-0 top-0 h-svh border-l border-border bg-sidebar flex flex-col transition-all duration-300 z-50',
+          isOpen ? 'opacity-100 w-64' : 'opacity-0 w-0 overflow-hidden'
+        )}
+        style={{
+          width: '30vw'
+        }}
+      >
+        <div className="flex-1 flex flex-col h-full">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+            <h3 className="text-sm font-medium">Chat with Blot</h3>
+            <div className="flex gap-2">
               <Button
-                type="button"
-                onClick={handleInterrupt}
-                variant="outline"
+                variant="ghost"
                 size="icon"
-                title="Stop generating"
+                onClick={() => setSheetOpen(true)}
+                className="h-8 w-8"
+                title="Fullscreen chat"
+                disabled={!currentNote}
               >
-                <StopCircle className="h-4 w-4" />
+                <Maximize2 className="h-4 w-4" />
               </Button>
-            ) : (
               <Button
-                type="submit"
+                variant="ghost"
                 size="icon"
-                disabled={!inputValue.trim() || noNoteSelected}
-                title="Send message"
+                onClick={handleClearChat}
+                className="h-8 w-8"
+                title="Clear chat"
+                disabled={!currentNote}
               >
-                <Send className="h-4 w-4" />
+                <Trash2 className="h-4 w-4" />
               </Button>
-            )}
+            </div>
           </div>
-        </form>
+
+          <div className="flex flex-col h-full">
+            <ScrollArea ref={scrollAreaRef} className="flex-1 p-4 pb-16 mb-16 h-full">
+              {noNoteSelected ? (
+                <div className="flex items-center justify-center h-full text-center">
+                  <p className="text-muted-foreground">Select a note to start chatting</p>
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-center">
+                  <p className="text-muted-foreground">hehe</p>
+                </div>
+              ) : (
+                messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className="mb-4"
+                    style={{
+                      width: '27vw',
+                      wordBreak: 'break-word'
+                    }}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-xs font-medium">
+                        {message.sender === 'ai' ? 'Blot' : 'You'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {message.timestamp.toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    </div>
+                    <div
+                      className={`rounded-lg px-3 py-2 text-sm ${
+                        message.sender === 'user'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted'
+                      }`}
+                    >
+                      <ReactMarkdown>
+                        {message.content ||
+                          (message.sender === 'ai' &&
+                          isStreaming &&
+                          message.id === currentAiMessageIdRef.current
+                            ? 'Thinking...'
+                            : '')}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                ))
+              )}
+            </ScrollArea>
+          </div>
+
+          <form
+            onSubmit={handleSubmit}
+            className="p-4 mt-auto border-t border-border sticky bottom-0 bg-sidebar"
+          >
+            <div className="flex gap-2">
+              <Input
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Type your message..."
+                className="flex-1"
+                disabled={isStreaming || noNoteSelected}
+              />
+              {isStreaming ? (
+                <Button
+                  type="button"
+                  onClick={handleInterrupt}
+                  variant="outline"
+                  size="icon"
+                  title="Stop generating"
+                >
+                  <StopCircle className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={!inputValue.trim() || noNoteSelected}
+                  title="Send message"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+
+      {/* Fullscreen Chat Sheet */}
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent side="bottom" className="h-[100vh] w-full p-0 border-t border-border">
+          <SheetHeader className="flex justify-between items-center p-4 border-b border-border">
+            <SheetTitle>Chat with Blot</SheetTitle>
+          </SheetHeader>
+
+          <div className="flex flex-col h-full max-h-[calc(100vh)]">
+            <ScrollArea ref={fullscreenScrollAreaRef} className="flex-1 p-2 mb-8 h-full">
+              {noNoteSelected ? (
+                <div className="flex items-center justify-center h-full text-center">
+                  <p className="text-muted-foreground">Select a note to start chatting</p>
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-center">
+                  <p className="text-muted-foreground">Start a conversation</p>
+                </div>
+              ) : (
+                <div className="px-4 mx-auto">
+                  {messages.map((message) => (
+                    <div key={message.id} className="mb-6">
+                      <div className="flex items-center gap-3 mb-2">
+                        <p className="text-sm font-medium">
+                          {message.sender === 'ai' ? 'Blot' : 'You'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {message.timestamp.toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                      <div
+                        className={`rounded-lg p-4 text-sm ${
+                          message.sender === 'user'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted'
+                        }`}
+                      >
+                        <ReactMarkdown>
+                          {message.content ||
+                            (message.sender === 'ai' &&
+                            isStreaming &&
+                            message.id === currentAiMessageIdRef.current
+                              ? 'Thinking...'
+                              : '')}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+
+            <form
+              onSubmit={handleSubmit}
+              className="p-6 mt-auto border-t border-border sticky bottom-0 bg-background"
+            >
+              <div className="flex gap-3 max-w-3xl mx-auto">
+                <Input
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder="Type your message..."
+                  className="flex-1"
+                  disabled={isStreaming || noNoteSelected}
+                />
+                {isStreaming ? (
+                  <Button
+                    type="button"
+                    onClick={handleInterrupt}
+                    variant="outline"
+                    title="Stop generating"
+                  >
+                    <StopCircle className="h-4 w-4 mr-2" />
+                    Stop
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    disabled={!inputValue.trim() || noNoteSelected}
+                    title="Send message"
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    Send
+                  </Button>
+                )}
+              </div>
+            </form>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   )
 }

@@ -18,6 +18,7 @@ interface NoteContextType {
   loadNote: (id: string) => Promise<void>
   saveCurrentNote: (updates: { title?: string; content?: any }) => Promise<void>
   updateNoteCache: (updates: { title?: string; content?: any }) => void
+  updateNoteContent: (content: any) => Promise<void>
   forceSave: () => Promise<void>
   deleteNote: (id: string) => Promise<void>
   setCurrentNote: (note: Note | null) => void
@@ -227,6 +228,24 @@ export const NoteProvider = ({ children }: NoteProviderProps) => {
     }
   }
 
+  const updateNoteContent = async (content: any) => {
+    if (!currentNote) return
+
+    console.log('Updating note content:', currentNote.id)
+    try {
+      // Update the cache first to reflect changes immediately
+      updateNoteCache({ content })
+
+      // Then save to disk
+      await saveCurrentNote({ content })
+
+      console.log('Note content updated successfully')
+    } catch (error) {
+      console.error(`Error updating note content ${currentNote.id}:`, error)
+      throw error
+    }
+  }
+
   // Clean up timeout on unmount
   useEffect(() => {
     return () => {
@@ -303,6 +322,7 @@ export const NoteProvider = ({ children }: NoteProviderProps) => {
     loadNote,
     saveCurrentNote,
     updateNoteCache,
+    updateNoteContent,
     forceSave,
     deleteNote,
     setCurrentNote,

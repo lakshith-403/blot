@@ -42,6 +42,7 @@ export interface OpenAIAPI {
   onChatDone: (callback: () => void) => () => void
   onChatError: (callback: (error: string) => void) => () => void
   interruptChat: () => void
+  apply: (noteText: string, botMessage: string, apiKey: string, noteId: string) => Promise<string>
 }
 
 export interface API {

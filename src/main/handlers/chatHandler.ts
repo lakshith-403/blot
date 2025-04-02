@@ -291,4 +291,60 @@ Please use this information to provide accurate and relevant responses.`
       throw error
     }
   })
+
+  // Handle OpenAI API requests for applying bot message changes to a note
+  ipcMain.handle('openai:apply', async (_, noteText, botMessage, apiKey, noteId) => {
+    try {
+      console.log('Making OpenAI apply request from main process')
+
+      const openai = new OpenAI({
+        apiKey: apiKey
+      })
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a helpful assistant for a note-taking app called Blot. 
+            Your task is to determine if the bot message contains instructions for modifying a note.
+            If it does, you should apply those changes to the note content provided.
+            If the bot message doesn't contain instructions for modifying the note, return the original note content unchanged.
+            
+            When modifying the note, follow these guidelines:
+            1. Make the exact changes described in the bot message
+            2. Preserve formatting as much as possible
+            3. Return only the modified note content with no explanation or commentary`
+          },
+          {
+            role: 'user',
+            content: `Here is the current note content:
+
+--- NOTE CONTENT ---
+${noteText}
+-------------------
+
+Here is the bot message:
+
+--- BOT MESSAGE ---
+${botMessage}
+-------------------
+
+Please apply any changes suggested in the bot message to the note content.
+If no changes are needed or the bot message doesn't contain modification instructions, return the original note content.`
+          }
+        ],
+        temperature: 0.2,
+        max_tokens: 5000
+      })
+
+      const result = completion.choices[0]?.message?.content || noteText
+      console.log('Applied changes to note')
+
+      return result
+    } catch (error) {
+      console.error('Error applying changes with OpenAI:', error)
+      throw error
+    }
+  })
 }

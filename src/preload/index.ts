@@ -38,7 +38,9 @@ const api = {
       ipcRenderer.on('openai:chat-error', listener)
       return () => ipcRenderer.removeListener('openai:chat-error', listener)
     },
-    interruptChat: () => ipcRenderer.send('openai:chat-interrupt')
+    interruptChat: () => ipcRenderer.send('openai:chat-interrupt'),
+    apply: (noteText: string, botMessage: string, apiKey: string, noteId: string) =>
+      ipcRenderer.invoke('openai:apply', noteText, botMessage, apiKey, noteId)
   }
 }
 

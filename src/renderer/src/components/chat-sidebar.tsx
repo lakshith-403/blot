@@ -1,4 +1,4 @@
-import { Maximize2, Send, StopCircle, Trash2, X } from 'lucide-react'
+import { Maximize2, Send, StopCircle, Trash2, X, CheckCircle } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -52,6 +52,12 @@ declare global {
         onChatDone: (callback: () => void) => () => void
         onChatError: (callback: (error: string) => void) => () => void
         interruptChat: () => void
+        apply: (
+          originalContent: string,
+          improvedContent: string,
+          apiKey: string,
+          noteId: string
+        ) => Promise<string>
       }
     }
   }
@@ -59,6 +65,241 @@ declare global {
 
 const apiKey = import.meta.env.RENDERER_VITE_OPENAI_API_KEY || ''
 const noteService = new NoteService()
+
+// Create a proper message component
+const ChatMessage = ({
+  message,
+  isLastBotMessage,
+  isStreaming,
+  currentAiMessageId
+}: {
+  message: Message
+  isLastBotMessage: boolean
+  isStreaming: boolean
+  currentAiMessageId: string | null
+}) => {
+  const { currentNote, getCachedContent, updateNoteContent } = useNotes()
+  const [isApplying, setIsApplying] = useState(false)
+
+  const handleApply = async () => {
+    if (!currentNote || !message.content) return
+
+    setIsApplying(true)
+
+    try {
+      // Get the cached content (includes unsaved changes)
+      const cachedNoteData = getCachedContent()
+      const noteContentData = cachedNoteData?.content || currentNote.content
+
+      let noteContent = ''
+      if (noteContentData && Array.isArray(noteContentData.ops)) {
+        // Extract text from each insert operation
+        noteContent = noteContentData.ops
+          .filter((op) => op && typeof op.insert === 'string')
+          .map((op) => op.insert)
+          .join('')
+      } else {
+        noteContent = '[Note content unavailable]'
+      }
+
+      console.log('Applying bot message changes...')
+      console.log('Bot message:', message.content)
+
+      // Call the API to apply changes
+      const result = await window.api.openai.apply(
+        noteContent,
+        message.content,
+        apiKey,
+        currentNote.id
+      )
+
+      console.log('Applied result:', result)
+
+      // Update the note with the modified content
+      if (result && result !== noteContent) {
+        // Create new Delta format content
+        const newContent = {
+          ops: [{ insert: result }]
+        }
+
+        // Update the note content
+        await updateNoteContent(newContent)
+        console.log('Note updated successfully')
+      } else {
+        console.log('No changes needed or applied')
+      }
+    } catch (error) {
+      console.error('Error applying changes:', error)
+    } finally {
+      setIsApplying(false)
+    }
+  }
+
+  return (
+    <div
+      className="mb-4"
+      style={{
+        width: '27vw',
+        wordBreak: 'break-word'
+      }}
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <p className="text-xs font-medium">{message.sender === 'ai' ? 'Blot' : 'You'}</p>
+        <p className="text-xs text-muted-foreground">
+          {message.timestamp.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          })}
+        </p>
+      </div>
+      <div
+        className={`rounded-lg px-3 py-2 text-sm ${
+          message.sender === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+        }`}
+      >
+        <ReactMarkdown>
+          {message.content ||
+            (message.sender === 'ai' && isStreaming && message.id === currentAiMessageId
+              ? 'Thinking...'
+              : '')}
+        </ReactMarkdown>
+
+        {/* Add subtle Apply button for the last bot message */}
+        {message.sender === 'ai' && isLastBotMessage && (
+          <div className="mt-2 flex justify-end">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-xs h-6 px-2 py-0"
+              disabled={isStreaming || isApplying}
+              onClick={handleApply}
+            >
+              {isApplying ? 'Applying...' : <>Apply</>}
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Also add a fullscreen message component with the Apply button
+const FullscreenChatMessage = ({
+  message,
+  isLastBotMessage,
+  isStreaming,
+  currentAiMessageId
+}: {
+  message: Message
+  isLastBotMessage: boolean
+  isStreaming: boolean
+  currentAiMessageId: string | null
+}) => {
+  const { currentNote, getCachedContent, updateNoteContent } = useNotes()
+  const [isApplying, setIsApplying] = useState(false)
+
+  const handleApply = async () => {
+    if (!currentNote || !message.content) return
+
+    setIsApplying(true)
+
+    try {
+      // Get the cached content (includes unsaved changes)
+      const cachedNoteData = getCachedContent()
+      const noteContentData = cachedNoteData?.content || currentNote.content
+
+      let noteContent = ''
+      if (noteContentData && Array.isArray(noteContentData.ops)) {
+        // Extract text from each insert operation
+        noteContent = noteContentData.ops
+          .filter((op) => op && typeof op.insert === 'string')
+          .map((op) => op.insert)
+          .join('')
+      } else {
+        noteContent = '[Note content unavailable]'
+      }
+
+      console.log('Applying bot message changes...')
+      console.log('Bot message:', message.content)
+
+      // Call the API to apply changes
+      const result = await window.api.openai.apply(
+        noteContent,
+        message.content,
+        apiKey,
+        currentNote.id
+      )
+
+      console.log('Applied result:', result)
+
+      // Update the note with the modified content
+      if (result && result !== noteContent) {
+        // Create new Delta format content
+        const newContent = {
+          ops: [{ insert: result }]
+        }
+
+        // Update the note content
+        await updateNoteContent(newContent)
+        console.log('Note updated successfully')
+      } else {
+        console.log('No changes needed or applied')
+      }
+    } catch (error) {
+      console.error('Error applying changes:', error)
+    } finally {
+      setIsApplying(false)
+    }
+  }
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-3 mb-2">
+        <p className="text-sm font-medium">{message.sender === 'ai' ? 'Blot' : 'You'}</p>
+        <p className="text-xs text-muted-foreground">
+          {message.timestamp.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          })}
+        </p>
+      </div>
+      <div
+        className={`rounded-lg p-4 text-sm ${
+          message.sender === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+        }`}
+      >
+        <ReactMarkdown>
+          {message.content ||
+            (message.sender === 'ai' && isStreaming && message.id === currentAiMessageId
+              ? 'Thinking...'
+              : '')}
+        </ReactMarkdown>
+
+        {/* Add subtle Apply button for the last bot message */}
+        {message.sender === 'ai' && isLastBotMessage && (
+          <div className="mt-2 flex justify-end">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-xs h-6 px-2 py-0"
+              disabled={isStreaming || isApplying}
+              onClick={handleApply}
+            >
+              {isApplying ? (
+                'Applying...'
+              ) : (
+                <>
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Apply
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export function ChatSidebar() {
   const { isOpen, references, removeReference } = useChatSidebar()
@@ -389,43 +630,14 @@ ${references.map((ref) => `ref${ref.id}:\n ${ref.text}`).join('\n')}
                   <p className="text-muted-foreground">hehe</p>
                 </div>
               ) : (
-                messages.map((message) => (
-                  <div
+                messages.map((message, index) => (
+                  <ChatMessage
                     key={message.id}
-                    className="mb-4"
-                    style={{
-                      width: '27vw',
-                      wordBreak: 'break-word'
-                    }}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-xs font-medium">
-                        {message.sender === 'ai' ? 'Blot' : 'You'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {message.timestamp.toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </p>
-                    </div>
-                    <div
-                      className={`rounded-lg px-3 py-2 text-sm ${
-                        message.sender === 'user'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted'
-                      }`}
-                    >
-                      <ReactMarkdown>
-                        {message.content ||
-                          (message.sender === 'ai' &&
-                          isStreaming &&
-                          message.id === currentAiMessageIdRef.current
-                            ? 'Thinking...'
-                            : '')}
-                      </ReactMarkdown>
-                    </div>
-                  </div>
+                    message={message}
+                    isLastBotMessage={message.sender === 'ai' && index === messages.length - 1}
+                    isStreaming={isStreaming}
+                    currentAiMessageId={currentAiMessageIdRef.current}
+                  />
                 ))
               )}
             </ScrollArea>
@@ -522,36 +734,14 @@ ${references.map((ref) => `ref${ref.id}:\n ${ref.text}`).join('\n')}
                 </div>
               ) : (
                 <div className="px-4 mx-auto">
-                  {messages.map((message) => (
-                    <div key={message.id} className="mb-6">
-                      <div className="flex items-center gap-3 mb-2">
-                        <p className="text-sm font-medium">
-                          {message.sender === 'ai' ? 'Blot' : 'You'}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {message.timestamp.toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                      </div>
-                      <div
-                        className={`rounded-lg p-4 text-sm ${
-                          message.sender === 'user'
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted'
-                        }`}
-                      >
-                        <ReactMarkdown>
-                          {message.content ||
-                            (message.sender === 'ai' &&
-                            isStreaming &&
-                            message.id === currentAiMessageIdRef.current
-                              ? 'Thinking...'
-                              : '')}
-                        </ReactMarkdown>
-                      </div>
-                    </div>
+                  {messages.map((message, index) => (
+                    <FullscreenChatMessage
+                      key={message.id}
+                      message={message}
+                      isLastBotMessage={message.sender === 'ai' && index === messages.length - 1}
+                      isStreaming={isStreaming}
+                      currentAiMessageId={currentAiMessageIdRef.current}
+                    />
                   ))}
                 </div>
               )}

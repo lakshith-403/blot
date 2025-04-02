@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Quill from 'quill'
 import 'quill/dist/quill.snow.css'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -10,6 +11,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued'
 import {
   Drawer,
@@ -29,6 +31,7 @@ import {
   DialogFooter
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { useChatSidebar } from '@/contexts/chat-sidebar-context'
 
 // Icons for toolbar buttons
 import {
@@ -43,18 +46,10 @@ import {
   AlignRight,
   Wand2,
   Loader2,
-  MessageSquare
+  MessageSquare,
+  BookmarkPlus,
+  X
 } from 'lucide-react'
-
-interface EditorProps {
-  readOnly?: boolean
-  defaultValue?: any
-  title?: string
-  onTitleChange?: (title: string) => void
-  onTextChange?: (...args: any[]) => void
-  onSelectionChange?: (...args: any[]) => void
-  className?: string
-}
 
 // Formats we'll track
 interface FormatState {
@@ -65,6 +60,23 @@ interface FormatState {
   list: false | 'ordered' | 'bullet'
   blockquote: boolean
   align: false | '' | 'center' | 'right'
+}
+
+// Define a type for text references
+interface TextReference {
+  id: string
+  text: string
+  label: string
+}
+
+interface EditorProps {
+  readOnly?: boolean
+  defaultValue?: any
+  title?: string
+  onTitleChange?: (title: string) => void
+  onTextChange?: (...args: any[]) => void
+  onSelectionChange?: (...args: any[]) => void
+  className?: string
 }
 
 const DEFAULT_FORMATS: FormatState = {
@@ -79,6 +91,7 @@ const DEFAULT_FORMATS: FormatState = {
 
 const Editor = forwardRef<Quill, EditorProps>(
   ({ readOnly = false, defaultValue, onTextChange, onSelectionChange, className = '' }, ref) => {
+    const { addReference } = useChatSidebar()
     const containerRef = useRef<HTMLDivElement | null>(null)
     const editorContainerRef = useRef<HTMLDivElement | null>(null)
     const defaultValueRef = useRef(defaultValue)
@@ -337,6 +350,18 @@ const Editor = forwardRef<Quill, EditorProps>(
 
     const handleRejectImprovement = () => {
       setShowDiffDrawer(false)
+    }
+
+    const handleAddToChat = () => {
+      if (selection && addReference) {
+        const reference: TextReference = {
+          id: '', // This will be assigned by the context
+          text: selection.text,
+          label: '' // This will be assigned by the context
+        }
+        addReference(reference)
+        setShowPopover(false)
+      }
     }
 
     useEffect(() => {
@@ -618,6 +643,18 @@ const Editor = forwardRef<Quill, EditorProps>(
                   <>
                     <MessageSquare className="h-3 w-3 mr-1" />
                     Custom
+                  </>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 py-0 rounded-md text-xs"
+                  onClick={handleAddToChat}
+                  disabled={isImproving}
+                >
+                  <>
+                    <BookmarkPlus className="h-3 w-3 mr-1" />
+                    Add to chat
                   </>
                 </Button>
               </div>

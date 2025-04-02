@@ -1,8 +1,10 @@
-import { Maximize2, Send, StopCircle, Trash2 } from 'lucide-react'
+import { Maximize2, Send, StopCircle, Trash2, X } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Badge } from '@/components/ui/badge'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { useChatSidebar } from '@/contexts/chat-sidebar-context'
 import { useNotes } from '@/contexts/note-context'
 import { cn } from '@/lib/utils'
@@ -15,6 +17,13 @@ interface Message {
   content: string
   sender: 'user' | 'ai'
   timestamp: Date
+  references?: TextReference[]
+}
+
+interface TextReference {
+  id: string
+  text: string
+  label: string
 }
 
 // Access the enhanced window.api
@@ -52,7 +61,7 @@ const apiKey = import.meta.env.RENDERER_VITE_OPENAI_API_KEY || ''
 const noteService = new NoteService()
 
 export function ChatSidebar() {
-  const { isOpen } = useChatSidebar()
+  const { isOpen, references, removeReference } = useChatSidebar()
   const { currentNote, getCachedContent } = useNotes()
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const fullscreenScrollAreaRef = useRef<HTMLDivElement>(null)
@@ -180,20 +189,27 @@ export function ChatSidebar() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!inputValue.trim() || isStreaming || !currentNote) return
+    if ((!inputValue.trim() && references.length === 0) || isStreaming || !currentNote) return
 
     // Get the cached content (includes unsaved changes)
     const cachedNoteData = getCachedContent()
 
+    // Prepare content with references if any
+    let content = inputValue
+
     const userMessage: Message = {
       id: crypto.randomUUID(),
-      content: inputValue,
+      content,
       sender: 'user',
-      timestamp: new Date()
+      timestamp: new Date(),
+      references: [...references] // Store references with the message
     }
 
     setMessages((prev) => [...prev, userMessage])
     setInputValue('')
+
+    // Clear references after sending
+    references.forEach((ref) => removeReference(ref.id))
 
     const aiMessageId = crypto.randomUUID()
     currentAiMessageIdRef.current = aiMessageId
@@ -252,12 +268,12 @@ export function ChatSidebar() {
       You are a professional writing assistant trained to help users improve their writing while preserving their original voice and intent. Your job is to:
 	•	Enhance clarity, grammar, flow, and structure.
 	•	Suggest alternatives for weak or awkward phrasing.
-	•	Maintain the user’s tone, style, and purpose unless otherwise instructed.
+	•	Maintain the user's tone, style, and purpose unless otherwise instructed.
 	•	Be concise, constructive, and respectful in all suggestions.
 	•	Offer explanations when asked, but do not overwhelm the user with technical grammar unless requested.
 	•	Support multiple writing types (e.g. essays, fiction, emails, blog posts, academic writing, etc.) and adapt accordingly.
 
-Do not generate full rewrites unless specifically asked. Focus on improving what’s provided. If the user asks for tone-specific help (e.g., make it sound more formal, more persuasive, or more friendly), follow that instruction precisely.
+Do not generate full rewrites unless specifically asked. Focus on improving what's provided. If the user asks for tone-specific help (e.g., make it sound more formal, more persuasive, or more friendly), follow that instruction precisely.
 You have access to the following note:
 
 --- NOTE METADATA ---
@@ -267,7 +283,14 @@ ${noteMeta}
 ${noteContent}
 -------------------
 
-Please use this information to provide accurate and relevant responses.`
+Please use this information to provide accurate and relevant responses.
+
+--- REFERENCES ---
+Following are the highlighted text from the note that the user is referring to. If there are references, use them to answer the user's question instead of the whole note.
+
+${references.map((ref) => `ref${ref.id}:\n ${ref.text}`).join('\n')}
+
+`
 
       const apiMessages = [
         {
@@ -412,6 +435,42 @@ Please use this information to provide accurate and relevant responses.`
             onSubmit={handleSubmit}
             className="p-4 mt-auto border-t border-border sticky bottom-0 bg-sidebar"
           >
+            {/* References */}
+            {references.length > 0 && (
+              <div className="mb-2 pb-2">
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {references.map((ref) => (
+                    <HoverCard key={ref.id} openDelay={200} closeDelay={200}>
+                      <HoverCardTrigger asChild>
+                        <div className="flex items-center gap-1">
+                          <Badge
+                            variant="outline"
+                            className="cursor-pointer whitespace-nowrap hover:bg-muted/50 transition-colors"
+                          >
+                            {ref.label}
+                          </Badge>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-4 w-4 p-0 hover:bg-transparent"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              removeReference(ref.id)
+                            }}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent sideOffset={5} className="w-80 text-sm p-2">
+                        {ref.text}
+                      </HoverCardContent>
+                    </HoverCard>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex gap-2">
               <Input
                 value={inputValue}
@@ -433,11 +492,10 @@ Please use this information to provide accurate and relevant responses.`
               ) : (
                 <Button
                   type="submit"
-                  size="icon"
-                  disabled={!inputValue.trim() || noNoteSelected}
-                  title="Send message"
+                  disabled={(!inputValue.trim() && references.length === 0) || noNoteSelected}
                 >
-                  <Send className="h-4 w-4" />
+                  <Send className="h-4 w-4 mr-2" />
+                  Send
                 </Button>
               )}
             </div>
@@ -503,6 +561,42 @@ Please use this information to provide accurate and relevant responses.`
               onSubmit={handleSubmit}
               className="p-6 mt-auto border-t border-border sticky bottom-0 bg-background"
             >
+              {/* References */}
+              {references.length > 0 && (
+                <div className="mb-2 pb-2">
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {references.map((ref) => (
+                      <HoverCard key={ref.id} openDelay={200} closeDelay={200}>
+                        <HoverCardTrigger asChild>
+                          <div className="flex items-center gap-1">
+                            <Badge
+                              variant="outline"
+                              className="cursor-pointer whitespace-nowrap hover:bg-muted/50 transition-colors"
+                            >
+                              {ref.label}
+                            </Badge>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-4 w-4 p-0 hover:bg-transparent"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                removeReference(ref.id)
+                              }}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </HoverCardTrigger>
+                        <HoverCardContent sideOffset={5} className="w-80 text-sm p-2">
+                          {ref.text}
+                        </HoverCardContent>
+                      </HoverCard>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="flex gap-3 max-w-3xl mx-auto">
                 <Input
                   value={inputValue}
@@ -524,8 +618,7 @@ Please use this information to provide accurate and relevant responses.`
                 ) : (
                   <Button
                     type="submit"
-                    disabled={!inputValue.trim() || noNoteSelected}
-                    title="Send message"
+                    disabled={(!inputValue.trim() && references.length === 0) || noNoteSelected}
                   >
                     <Send className="h-4 w-4 mr-2" />
                     Send

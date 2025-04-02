@@ -347,7 +347,12 @@ const Editor = forwardRef<Quill, EditorProps>(
       const quill = new Quill(editorContainerRef.current, {
         theme: 'snow',
         modules: {
-          toolbar: false // Disable default toolbar
+          toolbar: false, // Disable default toolbar
+          history: {
+            userOnly: true,
+            delay: 1000,
+            maxStack: 100
+          }
         }
       })
 

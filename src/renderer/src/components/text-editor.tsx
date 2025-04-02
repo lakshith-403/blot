@@ -51,6 +51,13 @@ import {
   X
 } from 'lucide-react'
 
+// Add TypeScript declaration for the global Quill instance
+declare global {
+  interface Window {
+    editorQuill?: Quill | null
+  }
+}
+
 // Formats we'll track
 interface FormatState {
   bold: boolean
@@ -382,6 +389,10 @@ const Editor = forwardRef<Quill, EditorProps>(
       })
 
       quillRef.current = quill
+
+      // Expose the Quill instance to the window for external access
+      window.editorQuill = quill
+
       quill.enable(!readOnly)
 
       if (ref && typeof ref === 'object') {
@@ -406,6 +417,7 @@ const Editor = forwardRef<Quill, EditorProps>(
           ref.current = null
         }
         quillRef.current = null
+        window.editorQuill = null
       }
     }, [ref, readOnly])
 

@@ -11,6 +11,17 @@ import { cn } from '@/lib/utils'
 import { NoteService } from '@/services/note-service'
 import ReactMarkdown from 'react-markdown'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued'
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle
+} from '@/components/ui/drawer'
+import Quill from 'quill'
 
 interface Message {
   id: string
@@ -60,6 +71,7 @@ declare global {
         ) => Promise<string>
       }
     }
+    editorQuill?: Quill | null
   }
 }
 
@@ -78,13 +90,18 @@ const ChatMessage = ({
   isStreaming: boolean
   currentAiMessageId: string | null
 }) => {
-  const { currentNote, getCachedContent, updateNoteContent } = useNotes()
+  const { currentNote, getCachedContent } = useNotes()
   const [isApplying, setIsApplying] = useState(false)
+  const [showDiffDrawer, setShowDiffDrawer] = useState(false)
+  const [originalText, setOriginalText] = useState('')
+  const [improvedText, setImprovedText] = useState('')
+  const [errorState, setErrorState] = useState<string | null>(null)
 
   const handleApply = async () => {
     if (!currentNote || !message.content) return
 
     setIsApplying(true)
+    setErrorState(null)
 
     try {
       // Get the cached content (includes unsaved changes)
@@ -103,9 +120,27 @@ const ChatMessage = ({
       }
 
       console.log('Applying bot message changes...')
-      console.log('Bot message:', message.content)
+      console.log('Bot message length:', message.content.length)
+      console.log('Note content length:', noteContent.length)
 
-      // Call the API to apply changes
+      // Store original text
+      setOriginalText(noteContent)
+
+      // Get note metadata for context
+      let noteMeta = ''
+      const noteTitle = cachedNoteData?.title || currentNote.title
+
+      if (noteTitle) {
+        noteMeta += `Title: ${noteTitle}\n`
+      }
+      if (currentNote.createdAt) {
+        noteMeta += `Created: ${new Date(currentNote.createdAt).toLocaleString()}\n`
+      }
+      if (currentNote.updatedAt) {
+        noteMeta += `Last Updated: ${new Date(currentNote.updatedAt).toLocaleString()}\n`
+      }
+
+      // Call the API to apply changes with full context
       const result = await window.api.openai.apply(
         noteContent,
         message.content,
@@ -113,73 +148,161 @@ const ChatMessage = ({
         currentNote.id
       )
 
-      console.log('Applied result:', result)
+      console.log('Applied result length:', result.length)
 
-      // Update the note with the modified content
-      if (result && result !== noteContent) {
-        // Create new Delta format content
-        const newContent = {
-          ops: [{ insert: result }]
-        }
-
-        // Update the note content
-        await updateNoteContent(newContent)
-        console.log('Note updated successfully')
-      } else {
-        console.log('No changes needed or applied')
+      // Validate the result - if empty or unchanged, don't proceed
+      if (!result || result === noteContent) {
+        console.log('No changes detected or empty result returned')
+        setErrorState('No changes detected in the message to apply')
+        setIsApplying(false)
+        return
       }
+
+      // Store improved text
+      setImprovedText(result)
+
+      // Show diff drawer
+      setShowDiffDrawer(true)
     } catch (error) {
       console.error('Error applying changes:', error)
+      setErrorState('Error processing changes. Please try again.')
     } finally {
       setIsApplying(false)
     }
   }
 
-  return (
-    <div
-      className="mb-4"
-      style={{
-        width: '27vw',
-        wordBreak: 'break-word'
-      }}
-    >
-      <div className="flex items-center gap-2 mb-1">
-        <p className="text-xs font-medium">{message.sender === 'ai' ? 'Blot' : 'You'}</p>
-        <p className="text-xs text-muted-foreground">
-          {message.timestamp.toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit'
-          })}
-        </p>
-      </div>
-      <div
-        className={`rounded-lg px-3 py-2 text-sm ${
-          message.sender === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-        }`}
-      >
-        <ReactMarkdown>
-          {message.content ||
-            (message.sender === 'ai' && isStreaming && message.id === currentAiMessageId
-              ? 'Thinking...'
-              : '')}
-        </ReactMarkdown>
+  const handleAcceptChanges = async () => {
+    if (!currentNote || !improvedText) return
 
-        {/* Add subtle Apply button for the last bot message */}
-        {message.sender === 'ai' && isLastBotMessage && (
-          <div className="mt-2 flex justify-end">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-xs h-6 px-2 py-0"
-              disabled={isStreaming || isApplying}
-              onClick={handleApply}
-            >
-              {isApplying ? 'Applying...' : <>Apply</>}
-            </Button>
-          </div>
-        )}
+    setIsApplying(true)
+    setErrorState(null)
+
+    try {
+      // Get the Quill editor directly from the window
+      const quill = window.editorQuill
+
+      if (quill) {
+        // Replace the entire content with the new content
+        const currentContents = quill.getContents()
+        quill.setContents([{ insert: improvedText }])
+
+        // Trigger a manual change event or anything needed for sync
+        const changeEvent = new Event('editor-content-updated')
+        document.dispatchEvent(changeEvent)
+
+        console.log('Note updated successfully with new content directly to Quill')
+
+        // Close the drawer
+        setShowDiffDrawer(false)
+      } else {
+        // Fallback if Quill not found (should never happen in normal operation)
+        setErrorState('Could not find editor. Please try saving manually.')
+      }
+    } catch (error) {
+      console.error('Error updating note:', error)
+      setErrorState('Error saving changes to note')
+    } finally {
+      setIsApplying(false)
+    }
+  }
+
+  const handleRejectChanges = () => {
+    setShowDiffDrawer(false)
+    setErrorState(null)
+  }
+
+  return (
+    <>
+      <div
+        className="mb-4"
+        style={{
+          width: '27vw',
+          wordBreak: 'break-word'
+        }}
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <p className="text-xs font-medium">{message.sender === 'ai' ? 'Blot' : 'You'}</p>
+          <p className="text-xs text-muted-foreground">
+            {message.timestamp.toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+          </p>
+        </div>
+        <div
+          className={`rounded-lg px-3 py-2 text-sm ${
+            message.sender === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+          }`}
+        >
+          <ReactMarkdown>
+            {message.content ||
+              (message.sender === 'ai' && isStreaming && message.id === currentAiMessageId
+                ? 'Thinking...'
+                : '')}
+          </ReactMarkdown>
+
+          {/* Show error state if exists */}
+          {errorState && (
+            <div className="mt-2 p-2 text-xs text-red-500 bg-red-100 rounded-md">{errorState}</div>
+          )}
+
+          {/* Add subtle Apply button for the last bot message */}
+          {message.sender === 'ai' && isLastBotMessage && (
+            <div className="mt-2 flex justify-end">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs h-6 px-2 py-0"
+                disabled={isStreaming || isApplying || !window.editorQuill}
+                onClick={handleApply}
+              >
+                {isApplying ? (
+                  <>
+                    <span className="animate-pulse">Applying...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Apply
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* Diff Drawer */}
+      <Drawer open={showDiffDrawer} onOpenChange={setShowDiffDrawer}>
+        <DrawerContent className="max-h-[85vh]">
+          <DrawerHeader>
+            <DrawerTitle>Apply Changes</DrawerTitle>
+            <DrawerDescription>Review changes that will be applied to your note</DrawerDescription>
+          </DrawerHeader>
+          <div className="p-4 overflow-auto max-h-[calc(85vh-180px)]">
+            <ReactDiffViewer
+              oldValue={originalText}
+              newValue={improvedText}
+              splitView={true}
+              useDarkTheme={false}
+              leftTitle="Original"
+              rightTitle="Modified"
+              compareMethod={DiffMethod.WORDS}
+            />
+          </div>
+          <DrawerFooter className="flex-row justify-end gap-2">
+            <DrawerClose asChild>
+              <Button variant="outline" onClick={handleRejectChanges}>
+                Reject
+              </Button>
+            </DrawerClose>
+            <Button onClick={handleAcceptChanges} disabled={isApplying}>
+              {isApplying ? 'Saving...' : 'Accept'}
+            </Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+    </>
   )
 }
 
@@ -195,13 +318,18 @@ const FullscreenChatMessage = ({
   isStreaming: boolean
   currentAiMessageId: string | null
 }) => {
-  const { currentNote, getCachedContent, updateNoteContent } = useNotes()
+  const { currentNote, getCachedContent } = useNotes()
   const [isApplying, setIsApplying] = useState(false)
+  const [showDiffDrawer, setShowDiffDrawer] = useState(false)
+  const [originalText, setOriginalText] = useState('')
+  const [improvedText, setImprovedText] = useState('')
+  const [errorState, setErrorState] = useState<string | null>(null)
 
   const handleApply = async () => {
     if (!currentNote || !message.content) return
 
     setIsApplying(true)
+    setErrorState(null)
 
     try {
       // Get the cached content (includes unsaved changes)
@@ -220,9 +348,27 @@ const FullscreenChatMessage = ({
       }
 
       console.log('Applying bot message changes...')
-      console.log('Bot message:', message.content)
+      console.log('Bot message length:', message.content.length)
+      console.log('Note content length:', noteContent.length)
 
-      // Call the API to apply changes
+      // Store original text
+      setOriginalText(noteContent)
+
+      // Get note metadata for context
+      let noteMeta = ''
+      const noteTitle = cachedNoteData?.title || currentNote.title
+
+      if (noteTitle) {
+        noteMeta += `Title: ${noteTitle}\n`
+      }
+      if (currentNote.createdAt) {
+        noteMeta += `Created: ${new Date(currentNote.createdAt).toLocaleString()}\n`
+      }
+      if (currentNote.updatedAt) {
+        noteMeta += `Last Updated: ${new Date(currentNote.updatedAt).toLocaleString()}\n`
+      }
+
+      // Call the API to apply changes with full context
       const result = await window.api.openai.apply(
         noteContent,
         message.content,
@@ -230,74 +376,155 @@ const FullscreenChatMessage = ({
         currentNote.id
       )
 
-      console.log('Applied result:', result)
+      console.log('Applied result length:', result.length)
 
-      // Update the note with the modified content
-      if (result && result !== noteContent) {
-        // Create new Delta format content
-        const newContent = {
-          ops: [{ insert: result }]
-        }
-
-        // Update the note content
-        await updateNoteContent(newContent)
-        console.log('Note updated successfully')
-      } else {
-        console.log('No changes needed or applied')
+      // Validate the result - if empty or unchanged, don't proceed
+      if (!result || result === noteContent) {
+        console.log('No changes detected or empty result returned')
+        setErrorState('No changes detected in the message to apply')
+        setIsApplying(false)
+        return
       }
+
+      // Store improved text
+      setImprovedText(result)
+
+      // Show diff drawer
+      setShowDiffDrawer(true)
     } catch (error) {
       console.error('Error applying changes:', error)
+      setErrorState('Error processing changes. Please try again.')
     } finally {
       setIsApplying(false)
     }
   }
 
-  return (
-    <div className="mb-6">
-      <div className="flex items-center gap-3 mb-2">
-        <p className="text-sm font-medium">{message.sender === 'ai' ? 'Blot' : 'You'}</p>
-        <p className="text-xs text-muted-foreground">
-          {message.timestamp.toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit'
-          })}
-        </p>
-      </div>
-      <div
-        className={`rounded-lg p-4 text-sm ${
-          message.sender === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-        }`}
-      >
-        <ReactMarkdown>
-          {message.content ||
-            (message.sender === 'ai' && isStreaming && message.id === currentAiMessageId
-              ? 'Thinking...'
-              : '')}
-        </ReactMarkdown>
+  const handleAcceptChanges = async () => {
+    if (!currentNote || !improvedText) return
 
-        {/* Add subtle Apply button for the last bot message */}
-        {message.sender === 'ai' && isLastBotMessage && (
-          <div className="mt-2 flex justify-end">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-xs h-6 px-2 py-0"
-              disabled={isStreaming || isApplying}
-              onClick={handleApply}
-            >
-              {isApplying ? (
-                'Applying...'
-              ) : (
-                <>
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Apply
-                </>
-              )}
-            </Button>
-          </div>
-        )}
+    setIsApplying(true)
+    setErrorState(null)
+
+    try {
+      // Get the Quill editor directly from the window
+      const quill = window.editorQuill
+
+      if (quill) {
+        // Replace the entire content with the new content
+        const currentContents = quill.getContents()
+        quill.setContents([{ insert: improvedText }])
+
+        // Trigger a manual change event or anything needed for sync
+        const changeEvent = new Event('editor-content-updated')
+        document.dispatchEvent(changeEvent)
+
+        console.log('Note updated successfully with new content directly to Quill')
+
+        // Close the drawer
+        setShowDiffDrawer(false)
+      } else {
+        // Fallback if Quill not found (should never happen in normal operation)
+        setErrorState('Could not find editor. Please try saving manually.')
+      }
+    } catch (error) {
+      console.error('Error updating note:', error)
+      setErrorState('Error saving changes to note')
+    } finally {
+      setIsApplying(false)
+    }
+  }
+
+  const handleRejectChanges = () => {
+    setShowDiffDrawer(false)
+    setErrorState(null)
+  }
+
+  return (
+    <>
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <p className="text-sm font-medium">{message.sender === 'ai' ? 'Blot' : 'You'}</p>
+          <p className="text-xs text-muted-foreground">
+            {message.timestamp.toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+          </p>
+        </div>
+        <div
+          className={`rounded-lg p-4 text-sm ${
+            message.sender === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+          }`}
+        >
+          <ReactMarkdown>
+            {message.content ||
+              (message.sender === 'ai' && isStreaming && message.id === currentAiMessageId
+                ? 'Thinking...'
+                : '')}
+          </ReactMarkdown>
+
+          {/* Show error state if exists */}
+          {errorState && (
+            <div className="mt-2 p-2 text-xs text-red-500 bg-red-100 rounded-md">{errorState}</div>
+          )}
+
+          {/* Add subtle Apply button for the last bot message */}
+          {message.sender === 'ai' && isLastBotMessage && (
+            <div className="mt-2 flex justify-end">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs h-6 px-2 py-0"
+                disabled={isStreaming || isApplying || !window.editorQuill}
+                onClick={handleApply}
+              >
+                {isApplying ? (
+                  <>
+                    <span className="animate-pulse">Applying...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Apply
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* Diff Drawer */}
+      <Drawer open={showDiffDrawer} onOpenChange={setShowDiffDrawer}>
+        <DrawerContent className="max-h-[85vh]">
+          <DrawerHeader>
+            <DrawerTitle>Apply Changes</DrawerTitle>
+            <DrawerDescription>Review changes that will be applied to your note</DrawerDescription>
+          </DrawerHeader>
+          <div className="p-4 overflow-auto max-h-[calc(85vh-180px)]">
+            <ReactDiffViewer
+              oldValue={originalText}
+              newValue={improvedText}
+              splitView={true}
+              useDarkTheme={false}
+              leftTitle="Original"
+              rightTitle="Modified"
+              compareMethod={DiffMethod.WORDS}
+            />
+          </div>
+          <DrawerFooter className="flex-row justify-end gap-2">
+            <DrawerClose asChild>
+              <Button variant="outline" onClick={handleRejectChanges}>
+                Reject
+              </Button>
+            </DrawerClose>
+            <Button onClick={handleAcceptChanges} disabled={isApplying}>
+              {isApplying ? 'Saving...' : 'Accept'}
+            </Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+    </>
   )
 }
 
@@ -527,7 +754,9 @@ ${noteContent}
 Please use this information to provide accurate and relevant responses.
 
 --- REFERENCES ---
-Following are the highlighted text from the note that the user is referring to. If there are references, use them to answer the user's question instead of the whole note.
+Following are the highlighted text from the note that the user is referring to. 
+If there are references, use them to answer the user's question instead of the whole note.
+If user says "this" or similar, and there are references, use the references to answer the question.
 
 ${references.map((ref) => `ref${ref.id}:\n ${ref.text}`).join('\n')}
 

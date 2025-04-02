@@ -30,6 +30,25 @@ const MainEditor = () => {
     }
   }, [currentNote])
 
+  // Listen for content updates from the chat sidebar's Apply button
+  useEffect(() => {
+    const handleEditorContentUpdated = () => {
+      console.log('Editor content updated event received')
+      if (quillRef.current) {
+        const quillContent = quillRef.current.getContents()
+        updateNoteCache({ content: quillContent })
+      }
+    }
+
+    // Add event listener for the custom event
+    document.addEventListener('editor-content-updated', handleEditorContentUpdated)
+
+    // Cleanup the event listener
+    return () => {
+      document.removeEventListener('editor-content-updated', handleEditorContentUpdated)
+    }
+  }, [updateNoteCache])
+
   const handleTitleChange = (newTitle: string) => {
     setTitle(newTitle)
     updateNoteCache({ title: newTitle })

@@ -296,6 +296,12 @@ Please use this information to provide accurate and relevant responses.`
   ipcMain.handle('openai:apply', async (_, noteText, botMessage, apiKey, noteId) => {
     try {
       console.log('Making OpenAI apply request from main process')
+      console.log(`Note text length: ${noteText.length}, Bot message length: ${botMessage.length}`)
+
+      if (!noteText || !botMessage) {
+        console.error('Note text or bot message is empty')
+        return noteText
+      }
 
       const openai = new OpenAI({
         apiKey: apiKey
@@ -307,44 +313,59 @@ Please use this information to provide accurate and relevant responses.`
           {
             role: 'system',
             content: `You are a helpful assistant for a note-taking app called Blot. 
-            Your task is to determine if the bot message contains instructions for modifying a note.
-            If it does, you should apply those changes to the note content provided.
-            If the bot message doesn't contain instructions for modifying the note, return the original note content unchanged.
+            Your task is to accurately apply changes to the user's note based on instructions in the bot message.
             
-            When modifying the note, follow these guidelines:
-            1. Make the exact changes described in the bot message
-            2. Preserve formatting as much as possible
-            3. Return only the modified note content with no explanation or commentary`
+            IMPORTANT GUIDELINES:
+            1. If the bot message contains specific instructions for editing the note (e.g., "change X to Y", "add section about Z", etc.), apply those changes precisely.
+            2. If the bot message contains a completely rewritten version of a section or the entire note, use that version.
+            3. If the bot message discusses the note but doesn't specifically instruct changes, DO NOT modify the original note.
+            4. Preserve the original formatting, structure, and style whenever possible.
+            5. Return ONLY the modified note content with no explanations, comments, or markdown formatting.
+            6. The output should be a direct replacement for the note, ready to be displayed in the editor.
+            7. If the bot message suggests multiple alternative options, choose the one that seems most aligned with the original text.
+            8. If you're unsure whether a change is intended, err on the side of preserving the original text.`
           },
           {
             role: 'user',
-            content: `Here is the current note content:
+            content: `Here is my current note content:
 
 --- NOTE CONTENT ---
 ${noteText}
 -------------------
 
-Here is the bot message:
+And here is a message from Blot (the AI) that might contain suggestions or instructions for modifying my note:
 
 --- BOT MESSAGE ---
 ${botMessage}
 -------------------
 
-Please apply any changes suggested in the bot message to the note content.
-If no changes are needed or the bot message doesn't contain modification instructions, return the original note content.`
+Please apply any appropriate changes from the bot message to my note content.
+If the bot message doesn't contain specific modification instructions or a rewritten version, return my original note content unchanged.
+Return ONLY the modified note content with no additional explanations or comments.`
           }
         ],
         temperature: 0.2,
-        max_tokens: 5000
+        max_tokens: 8000
       })
 
       const result = completion.choices[0]?.message?.content || noteText
-      console.log('Applied changes to note')
+
+      // Simple validation - if result is too short compared to original, something may be wrong
+      if (result.length < noteText.length * 0.5 && noteText.length > 100) {
+        console.warn(
+          'Warning: Result is significantly shorter than original. Returning original to be safe.'
+        )
+        return noteText
+      }
+
+      console.log(
+        `Applied changes to note. Original length: ${noteText.length}, New length: ${result.length}`
+      )
 
       return result
     } catch (error) {
       console.error('Error applying changes with OpenAI:', error)
-      throw error
+      return noteText // Return original on error
     }
   })
 }

@@ -2,7 +2,6 @@ import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import Quill from 'quill'
 import 'quill/dist/quill.snow.css'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -11,7 +10,6 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued'
 import {
   Drawer,
@@ -47,8 +45,7 @@ import {
   Wand2,
   Loader2,
   MessageSquare,
-  BookmarkPlus,
-  X
+  BookmarkPlus
 } from 'lucide-react'
 
 // Add TypeScript declaration for the global Quill instance

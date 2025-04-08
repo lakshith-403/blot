@@ -33,7 +33,6 @@ interface ChatSidebarProviderProps {
 export function ChatSidebarProvider({ children, defaultOpen = false }: ChatSidebarProviderProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
   const [references, setReferences] = useState<TextReference[]>([])
-  const [refCounter, setRefCounter] = useState(1)
 
   const toggle = useCallback(() => {
     setIsOpen((prev) => !prev)

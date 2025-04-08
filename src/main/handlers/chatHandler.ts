@@ -293,7 +293,7 @@ Please use this information to provide accurate and relevant responses.`
   })
 
   // Handle OpenAI API requests for applying bot message changes to a note
-  ipcMain.handle('openai:apply', async (_, noteText, botMessage, apiKey, noteId) => {
+  ipcMain.handle('openai:apply', async (_, noteText, botMessage, apiKey) => {
     try {
       console.log('Making OpenAI apply request from main process')
       console.log(`Note text length: ${noteText.length}, Bot message length: ${botMessage.length}`)

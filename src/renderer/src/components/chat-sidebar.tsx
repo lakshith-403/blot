@@ -183,7 +183,6 @@ const ChatMessage = ({
 
       if (quill) {
         // Replace the entire content with the new content
-        const currentContents = quill.getContents()
         quill.setContents([{ insert: improvedText }])
 
         // Trigger a manual change event or anything needed for sync
@@ -411,7 +410,6 @@ const FullscreenChatMessage = ({
 
       if (quill) {
         // Replace the entire content with the new content
-        const currentContents = quill.getContents()
         quill.setContents([{ insert: improvedText }])
 
         // Trigger a manual change event or anything needed for sync

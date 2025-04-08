@@ -64,8 +64,8 @@ declare global {
         onChatError: (callback: (error: string) => void) => () => void
         interruptChat: () => void
         apply: (
-          originalContent: string,
-          improvedContent: string,
+          noteText: string,
+          chatHistory: string,
           apiKey: string,
           noteId: string
         ) => Promise<string>
@@ -119,8 +119,7 @@ const ChatMessage = ({
         noteContent = '[Note content unavailable]'
       }
 
-      console.log('Applying bot message changes...')
-      console.log('Bot message length:', message.content.length)
+      console.log('Applying changes with chat history...')
       console.log('Note content length:', noteContent.length)
 
       // Store original text
@@ -140,10 +139,18 @@ const ChatMessage = ({
         noteMeta += `Last Updated: ${new Date(currentNote.updatedAt).toLocaleString()}\n`
       }
 
-      // Call the API to apply changes with full context
+      // Get chat history up to the current message
+      const chatHistory = await noteService.getChatHistory(currentNote.id)
+
+      // Prepare a summary of the chat history for the apply function
+      const chatSummary = chatHistory
+        .map((msg) => `${msg.role.toUpperCase()}: ${msg.content}`)
+        .join('\n\n')
+
+      // Call the API with the entire chat history context
       const result = await window.api.openai.apply(
         noteContent,
-        message.content,
+        chatSummary, // Send the formatted chat history summary
         apiKey,
         currentNote.id
       )
@@ -346,8 +353,7 @@ const FullscreenChatMessage = ({
         noteContent = '[Note content unavailable]'
       }
 
-      console.log('Applying bot message changes...')
-      console.log('Bot message length:', message.content.length)
+      console.log('Applying changes with chat history...')
       console.log('Note content length:', noteContent.length)
 
       // Store original text
@@ -367,10 +373,18 @@ const FullscreenChatMessage = ({
         noteMeta += `Last Updated: ${new Date(currentNote.updatedAt).toLocaleString()}\n`
       }
 
-      // Call the API to apply changes with full context
+      // Get chat history up to the current message
+      const chatHistory = await noteService.getChatHistory(currentNote.id)
+
+      // Prepare a summary of the chat history for the apply function
+      const chatSummary = chatHistory
+        .map((msg) => `${msg.role.toUpperCase()}: ${msg.content}`)
+        .join('\n\n')
+
+      // Call the API with the entire chat history context
       const result = await window.api.openai.apply(
         noteContent,
-        message.content,
+        chatSummary, // Send the formatted chat history summary
         apiKey,
         currentNote.id
       )

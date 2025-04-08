@@ -293,13 +293,15 @@ Please use this information to provide accurate and relevant responses.`
   })
 
   // Handle OpenAI API requests for applying bot message changes to a note
-  ipcMain.handle('openai:apply', async (_, noteText, botMessage, apiKey) => {
+  ipcMain.handle('openai:apply', async (_, noteText, chatHistory, apiKey) => {
     try {
       console.log('Making OpenAI apply request from main process')
-      console.log(`Note text length: ${noteText.length}, Bot message length: ${botMessage.length}`)
+      console.log(
+        `Note text length: ${noteText.length}, Chat history length: ${chatHistory.length}`
+      )
 
-      if (!noteText || !botMessage) {
-        console.error('Note text or bot message is empty')
+      if (!noteText || !chatHistory) {
+        console.error('Note text or chat history is empty')
         return noteText
       }
 
@@ -313,17 +315,18 @@ Please use this information to provide accurate and relevant responses.`
           {
             role: 'system',
             content: `You are a helpful assistant for a note-taking app called Blot. 
-            Your task is to accurately apply changes to the user's note based on instructions in the bot message.
+            Your task is to accurately apply changes to the user's note based on the conversation history between the user and the AI.
             
             IMPORTANT GUIDELINES:
-            1. If the bot message contains specific instructions for editing the note (e.g., "change X to Y", "add section about Z", etc.), apply those changes precisely.
-            2. If the bot message contains a completely rewritten version of a section or the entire note, use that version.
-            3. If the bot message discusses the note but doesn't specifically instruct changes, DO NOT modify the original note.
-            4. Preserve the original formatting, structure, and style whenever possible.
-            5. Return ONLY the modified note content with no explanations, comments, or markdown formatting.
-            6. The output should be a direct replacement for the note, ready to be displayed in the editor.
-            7. If the bot message suggests multiple alternative options, choose the one that seems most aligned with the original text.
-            8. If you're unsure whether a change is intended, err on the side of preserving the original text.`
+            1. Consider the full conversation history to understand what changes the user wants.
+            2. If the conversation includes specific instructions for editing the note (e.g., "change X to Y", "add section about Z", etc.), apply those changes precisely.
+            3. If the conversation includes a completely rewritten version of a section or the entire note, use that version.
+            4. If the conversation discusses the note but doesn't specifically instruct changes, DO NOT modify the original note.
+            5. Preserve the original formatting, structure, and style whenever possible.
+            6. Return ONLY the modified note content with no explanations, comments, or markdown formatting.
+            7. The output should be a direct replacement for the note, ready to be displayed in the editor.
+            8. If the conversation suggests multiple alternative options, choose the one that seems most aligned with the original text.
+            9. If you're unsure whether a change is intended, err on the side of preserving the original text.`
           },
           {
             role: 'user',
@@ -333,14 +336,14 @@ Please use this information to provide accurate and relevant responses.`
 ${noteText}
 -------------------
 
-And here is a message from Blot (the AI) that might contain suggestions or instructions for modifying my note:
+And here is the conversation history between me and the AI assistant:
 
---- BOT MESSAGE ---
-${botMessage}
+--- CONVERSATION HISTORY ---
+${chatHistory}
 -------------------
 
-Please apply any appropriate changes from the bot message to my note content.
-If the bot message doesn't contain specific modification instructions or a rewritten version, return my original note content unchanged.
+Please apply any appropriate changes from the conversation to my note content.
+If the conversation doesn't contain specific modification instructions or a rewritten version, return my original note content unchanged.
 Return ONLY the modified note content with no additional explanations or comments.`
           }
         ],

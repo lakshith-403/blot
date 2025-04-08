@@ -816,7 +816,7 @@ ${references.map((ref) => `ref${ref.id}:\n ${ref.text}`).join('\n')}
           isOpen ? 'opacity-100 w-64' : 'opacity-0 w-0 overflow-hidden'
         )}
         style={{
-          width: '30vw'
+          width: isOpen ? '30vw' : '0px'
         }}
       >
         <div className="flex-1 flex flex-col h-full">

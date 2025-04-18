@@ -2,7 +2,7 @@
 
 <img src="resources/icon.png" alt="Blot Logo" width="100" />
 
-Blot is a minimalist, intelligent AI-assisted writing application designed to enhance writing experiences.
+Blot is a minimalist electron app designed to enhance writing experiences.
 
 Started because I wanted a "cursor for writing" tool for myself for small tasks like writing emails, notes, etc.
 
